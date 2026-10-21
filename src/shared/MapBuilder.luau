@@ -173,14 +173,14 @@ local function buildHub(map: Instance)
 		table.insert(pathAngles, biome.angle)
 	end
 	for _, angle in pathAngles do
-		local from = Config.polar(angle, H.plazaRadius - 4)
+		local from = Config.polar(angle, H.plazaRadius - 2)
 		local to = Config.polar(angle, H.radius - 1)
 		local mid = (from + to) / 2
 		block(
 			hub,
 			"Path",
 			Vector3.new(22, 0.6, (to - from).Magnitude),
-			CFrame.lookAt(mid, to) * CFrame.new(0, 0, 0),
+			CFrame.lookAt(mid, to) * CFrame.new(0, -0.06, 0), -- just under the plaza to avoid z-fighting
 			H.plazaColor:Lerp(BLACK, 0.06),
 			Enum.Material.Pavement
 		)
@@ -753,7 +753,8 @@ local function buildBridge(parent: Instance, name: string, from: Vector3, to: Ve
 	local length = (to - from).Magnitude
 	local cf = CFrame.lookAt(mid, to)
 	local wood = Color3.fromRGB(176, 128, 86)
-	block(m, "Deck", Vector3.new(width, 2, length), cf * CFrame.new(0, -1, 0), wood, Enum.Material.WoodPlanks)
+	-- A hair below the island tops so the overlapping ends don't z-fight.
+	block(m, "Deck", Vector3.new(width, 2, length), cf * CFrame.new(0, -1.06, 0), wood, Enum.Material.WoodPlanks)
 	local posts = math.max(1, math.floor(length / 16))
 	for _, side in { -1, 1 } do
 		local x = side * (width / 2 - 0.6)
@@ -833,7 +834,7 @@ local function buildTraining(map: Instance)
 			WHITE
 		)
 		noCollide(lane)
-		for _, dx in { -45, 0, 45 } do
+		for _, dx in { 0 } do
 			local hurdle = block(
 				m,
 				"Hurdle",

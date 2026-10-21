@@ -533,7 +533,7 @@ function Builders.guardian(info: Config.GuardianInfo, base: CFrame): Model
 		end
 		E("Tail", Vector3.new(0.5, 0.5, 2.0), 0, 6.0, 6.0, accent, CFrame.Angles(math.rad(-40), 0, 0))
 	elseif info.style == "Golem" then
-		height = 15
+		height = 19 -- tag sits above the lollipop
 		E("Body", Vector3.new(8.5, 9, 6.5), 0, 6.2, 0, body)
 		E("Belly", Vector3.new(5.5, 5.5, 1.2), 0, 5.8, -2.9, WHITE)
 		E("BellySwirl", Vector3.new(3.4, 3.4, 1.3), 0, 5.8, -2.95, accent)

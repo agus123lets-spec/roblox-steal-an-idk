@@ -34,6 +34,7 @@ local LOCK_TIMEOUT = 300
 
 local store: DataStore? = nil
 local storeError: string? = nil
+local inflightSaves = 0
 
 local function getStore(): DataStore?
 	if store or storeError then
@@ -145,18 +146,22 @@ function DataService.load(player: Player): (SaveData, boolean)
 		warn("[NestHeist] DataStores unavailable, progress will not be saved:", storeError)
 		return DataService.defaultData(), false
 	end
-	local maxAttempts = if RunService:IsStudio() then 1 else 6
+	local isStudio = RunService:IsStudio()
+	local maxAttempts = if isStudio then 1 else 6
 	for attempt = 1, maxAttempts do
 		local locked = false
 		local loaded: any = nil
 		local ok, err = pcall(function()
 			ds:UpdateAsync(keyFor(player), function(old: any): any
 				locked = false
+				loaded = nil
 				if type(old) == "table" and type(old.lock) == "table" then
 					local lockedByOther = old.lock.job ~= game.JobId and os.time() - num(old.lock.t, 0) < LOCK_TIMEOUT
-					if lockedByOther and attempt < maxAttempts then
+					-- Studio never takes over a live server's lock; live servers do on the last attempt.
+					if lockedByOther and (attempt < maxAttempts or isStudio) then
 						locked = true
-						return nil -- another server still owns this profile; try again shortly
+						loaded = old.data
+						return nil
 					end
 				end
 				local wrapper = if type(old) == "table" then old else {}
@@ -167,6 +172,10 @@ function DataService.load(player: Player): (SaveData, boolean)
 		end)
 		if ok and not locked then
 			return DataService.reconcile(loaded), true
+		end
+		if ok and locked and isStudio then
+			warn(`[NestHeist] {player.Name}'s profile is open on a live server; this Studio session will not save.`)
+			return DataService.reconcile(loaded), false
 		end
 		if not ok then
 			warn(`[NestHeist] Load attempt {attempt} failed for {player.Name}: {err}`)
@@ -181,15 +190,24 @@ function DataService.load(player: Player): (SaveData, boolean)
 	return DataService.defaultData(), false
 end
 
+-- Number of saves currently talking to the DataStore (BindToClose waits for these).
+function DataService.inflight(): number
+	return inflightSaves
+end
+
 function DataService.save(player: Player, data: SaveData, release: boolean): boolean
 	local ds = getStore()
 	if not ds then
 		return false
 	end
 	data.lastOnline = os.time()
+	inflightSaves += 1
+	local cancelled = false
 	local ok, err = pcall(function()
 		ds:UpdateAsync(keyFor(player), function(old: any): any
+			cancelled = false
 			if type(old) == "table" and type(old.lock) == "table" and old.lock.job ~= game.JobId then
+				cancelled = true
 				return nil -- another server took over this profile; don't clobber it
 			end
 			return {
@@ -198,10 +216,13 @@ function DataService.save(player: Player, data: SaveData, release: boolean): boo
 			}
 		end)
 	end)
+	inflightSaves -= 1
 	if not ok then
 		warn(`[NestHeist] Save failed for {player.Name}: {err}`)
+	elseif cancelled then
+		warn(`[NestHeist] Skipped saving {player.Name}: another server owns this profile`)
 	end
-	return ok
+	return ok and not cancelled
 end
 
 return DataService

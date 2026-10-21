@@ -8,6 +8,7 @@ local PetLogic = require(ReplicatedStorage.Shared.PetLogic)
 local Builders = require(ReplicatedStorage.Shared.Builders)
 local Format = require(ReplicatedStorage.Shared.Format)
 local PlayerService = require(script.Parent.PlayerService)
+local Loop = require(script.Parent.Loop)
 
 type Session = PlayerService.Session
 
@@ -290,53 +291,51 @@ end
 ---------------------------------------------------------------------------
 -- Shield
 ---------------------------------------------------------------------------
-local function shieldLoop()
-	local labelTimer = 0
-	while true do
-		local dt = task.wait(0.1)
-		labelTimer += dt
-		local now = PlayerService.now()
-		for _, plot in plots do
-			local owner = plot.owner
-			if owner then
-				if plot.shieldActive and now >= plot.shieldUntil then
-					plot.shieldActive = false
+local labelTimer = 0
+
+local function shieldTick(dt: number)
+	labelTimer += dt
+	local now = PlayerService.now()
+	for _, plot in plots do
+		local owner = plot.owner
+		if owner then
+			if plot.shieldActive and now >= plot.shieldUntil then
+				plot.shieldActive = false
+				setShieldVisual(plot)
+				PlayerService.notify(owner, "Your shield is down. Recharging...", "warn")
+			elseif not plot.shieldActive and now >= plot.shieldReadyAt then
+				local root = PlayerService.rootOf(owner)
+				if root and PlotService.isOnPad(plot.shieldPad, root.Position) then
+					plot.shieldActive = true
+					plot.shieldUntil = now + Config.Steal.shieldDuration
+					plot.shieldReadyAt = plot.shieldUntil + Config.Steal.shieldCooldown
 					setShieldVisual(plot)
-					PlayerService.notify(owner, "Your shield is down. Recharging...", "warn")
-				elseif not plot.shieldActive and now >= plot.shieldReadyAt then
-					local root = PlayerService.rootOf(owner)
-					if root and PlotService.isOnPad(plot.shieldPad, root.Position) then
-						plot.shieldActive = true
-						plot.shieldUntil = now + Config.Steal.shieldDuration
-						plot.shieldReadyAt = plot.shieldUntil + Config.Steal.shieldCooldown
-						setShieldVisual(plot)
-						PlayerService.notify(
-							owner,
-							`🛡 Shield up for {Config.Steal.shieldDuration}s. Your incubating eggs can't be stolen!`,
-							"success"
-						)
-					end
+					PlayerService.notify(
+						owner,
+						`🛡 Shield up for {Config.Steal.shieldDuration}s. Your incubating eggs can't be stolen!`,
+						"success"
+					)
 				end
 			end
 		end
-		if labelTimer >= 0.5 then
-			labelTimer = 0
-			for _, plot in plots do
-				local label = plot.shieldStatus
-				if label then
-					local text
-					if not plot.owner then
-						text = "Step here to protect your eggs"
-					elseif plot.shieldActive then
-						text = `ACTIVE {Format.clock(plot.shieldUntil - now)}`
-					elseif now < plot.shieldReadyAt then
-						text = `Recharging {Format.clock(plot.shieldReadyAt - now)}`
-					else
-						text = "READY - step here!"
-					end
-					if label.Text ~= text then
-						label.Text = text
-					end
+	end
+	if labelTimer >= 0.5 then
+		labelTimer = 0
+		for _, plot in plots do
+			local label = plot.shieldStatus
+			if label then
+				local text
+				if not plot.owner then
+					text = "Step here to protect your eggs"
+				elseif plot.shieldActive then
+					text = `ACTIVE {Format.clock(plot.shieldUntil - now)}`
+				elseif now < plot.shieldReadyAt then
+					text = `Recharging {Format.clock(plot.shieldReadyAt - now)}`
+				else
+					text = "READY - step here!"
+				end
+				if label.Text ~= text then
+					label.Text = text
 				end
 			end
 		end
@@ -349,7 +348,7 @@ function PlotService.start()
 	PlayerService.onSessionEnding(release)
 	PlayerService.onPetsChanged(render)
 	PlayerService.onCharacterSpawned(teleportHome)
-	task.spawn(shieldLoop)
+	Loop.every("Shield", 0.1, shieldTick)
 end
 
 return PlotService

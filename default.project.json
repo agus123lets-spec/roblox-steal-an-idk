@@ -90,7 +90,8 @@
     "Players": {
       "$className": "Players",
       "$properties": {
-        "RespawnTime": 3
+        "RespawnTime": 3,
+        "MaxPlayers": 8
       }
     },
     "SoundService": {

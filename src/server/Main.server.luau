@@ -20,13 +20,20 @@ local TrainingService = require(Services.TrainingService)
 local ToolService = require(Services.ToolService)
 local ShopService = require(Services.ShopService)
 
-PlotService.start()
-EggService.start()
-GuardianService.start()
-TrainingService.start()
-ToolService.start()
-ShopService.start()
+local function start(name: string, service: { start: () -> () })
+	local ok, err = pcall(service.start)
+	if not ok then
+		warn(`[NestHeist] {name} failed to start: {err}`)
+	end
+end
+
+start("PlotService", PlotService)
+start("EggService", EggService)
+start("GuardianService", GuardianService)
+start("TrainingService", TrainingService)
+start("ToolService", ToolService)
+start("ShopService", ShopService)
 -- Last, so every service has registered its session hooks before the first player loads.
-PlayerService.start()
+start("PlayerService", PlayerService)
 
 print("[NestHeist] Server ready")

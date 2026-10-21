@@ -308,7 +308,7 @@ local function animatePets(t: number)
 	for _, plot in plots:GetChildren() do
 		local pets = plot:FindFirstChild("Pets")
 		local floor = plot:FindFirstChild("Floor")
-		if pets and floor and floor:IsA("BasePart") and (floor.Position - cameraPos).Magnitude < 140 then
+		if pets and floor and floor:IsA("BasePart") and (floor.Position - cameraPos).Magnitude < 110 then
 			for _, model in pets:GetChildren() do
 				if model:IsA("Model") then
 					local entry = petBases[model]
@@ -345,12 +345,14 @@ function World.start()
 	fxFolder.Name = "NestHeistFX"
 	fxFolder.Parent = workspace
 
-	local eggs = workspace:WaitForChild("Eggs")
-	for _, descendant in eggs:GetDescendants() do
-		processPrompt(descendant)
-	end
-	eggs.DescendantAdded:Connect(function(descendant)
-		task.defer(processPrompt, descendant)
+	task.spawn(function()
+		local eggs = workspace:WaitForChild("Eggs")
+		for _, descendant in eggs:GetDescendants() do
+			processPrompt(descendant)
+		end
+		eggs.DescendantAdded:Connect(function(descendant)
+			task.defer(processPrompt, descendant)
+		end)
 	end)
 
 	Remotes.Carry.OnClientEvent:Connect(function(state: any, info: any)
@@ -377,13 +379,25 @@ function World.start()
 		end
 	end)
 
-	RunService.Heartbeat:Connect(function()
-		animatePets(os.clock())
+	-- 30 updates a second is plenty for a gentle bob and keeps part writes down.
+	local bobTimer = 0
+	RunService.Heartbeat:Connect(function(dt: number)
+		bobTimer += dt
+		if bobTimer >= 1 / 30 then
+			bobTimer = 0
+			animatePets(os.clock())
+		end
 	end)
 
 	task.spawn(function()
 		while true do
-			updateMarker()
+			local ok, err = pcall(function(): string?
+				updateMarker()
+				return nil
+			end)
+			if not ok then
+				warn("[NestHeist] Marker error:", err)
+			end
 			if revengeTarget then
 				if workspace:GetServerTimeNow() > revengeEnds or not revengeTarget.Parent then
 					revengeTarget = nil

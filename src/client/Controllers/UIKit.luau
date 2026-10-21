@@ -203,6 +203,24 @@ function UIKit.tween(
 	return tween
 end
 
+-- Fades text together with its UIStroke outline (a stroke fades independently of the text).
+function UIKit.fadeText(label: TextLabel, seconds: number, transparency: number)
+	if seconds <= 0 then
+		label.TextTransparency = transparency
+	else
+		UIKit.tween(label, seconds, { TextTransparency = transparency })
+	end
+	for _, child in label:GetChildren() do
+		if child:IsA("UIStroke") then
+			if seconds <= 0 then
+				child.Transparency = transparency
+			else
+				UIKit.tween(child, seconds, { Transparency = transparency })
+			end
+		end
+	end
+end
+
 -- Quick bounce, used when a number changes or a panel opens.
 -- Only use on objects without their own UIScale (a GuiObject honours a single UIScale).
 function UIKit.pop(target: GuiObject, amount: number?)

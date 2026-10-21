@@ -79,10 +79,9 @@ expectScripts({ "StarterPlayer", "StarterPlayerScripts", "Client", "Controllers"
 })
 
 local serverMain = find({ "ServerScriptService", "Server", "Main" })
-check(
-	"server starts PlayerService last",
-	serverMain ~= nil and string.find(serverMain.Source, "PlayerService.start()", 1, true) ~= nil
-)
+local playerStart = serverMain and string.find(serverMain.Source, 'start("PlayerService", PlayerService)', 1, true)
+local shopStart = serverMain and string.find(serverMain.Source, 'start("ShopService", ShopService)', 1, true)
+check("server starts PlayerService last", playerStart ~= nil and shopStart ~= nil and playerStart > shopStart)
 
 local workspace = game:GetService("Workspace")
 check("streaming disabled", workspace.StreamingEnabled == false)
@@ -110,6 +109,7 @@ check("Lighting ClockTime set", math.abs(lighting.ClockTime - 14.5) < 0.01, ligh
 local starterPlayer = game:GetService("StarterPlayer")
 check("JumpHeight mode", starterPlayer.CharacterUseJumpPower == false)
 check("respawn time", game:GetService("Players").RespawnTime == 3)
+check("one player per nest", game:GetService("Players").MaxPlayers == 8, game:GetService("Players").MaxPlayers)
 
 print(`place.spec: {passes} passed, {failures} failed`)
 if failures > 0 then

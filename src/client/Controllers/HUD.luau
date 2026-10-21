@@ -28,7 +28,7 @@ local function computeScale(): number
 		return 1
 	end
 	local viewport = camera.ViewportSize
-	return math.clamp(math.min(viewport.X / 1150, viewport.Y / 680), 0.55, 1.1)
+	return math.clamp(math.min(viewport.X / 1150, viewport.Y / 680), 0.68, 1.1)
 end
 
 -- Keeps a UI group readable on phones and big monitors alike.
@@ -197,7 +197,7 @@ local function buildToasts()
 	HUD.responsive(banner)
 	bannerLabel = UIKit.label(banner, "Text", "", UDim2.fromScale(1, 1), UDim2.new(), C.coins)
 	UIKit.textStroke(bannerLabel, 3)
-	bannerLabel.TextTransparency = 1
+	UIKit.fadeText(bannerLabel, 0, 1)
 end
 
 local toastOrder = 0
@@ -248,6 +248,10 @@ function HUD.toast(text: string, kind: string?)
 		if toast.Parent then
 			UIKit.tween(toast, 0.3, { BackgroundTransparency = 1 })
 			UIKit.tween(label, 0.3, { TextTransparency = 1 })
+			local border = toast:FindFirstChildOfClass("UIStroke")
+			if border then
+				UIKit.tween(border, 0.3, { Transparency = 1 })
+			end
 			task.wait(0.3)
 			toast:Destroy()
 		end
@@ -259,11 +263,11 @@ function HUD.announce(text: string, kind: string?)
 	local token = bannerToken
 	bannerLabel.Text = text
 	bannerLabel.TextColor3 = if kind == "rare" then C.coins else UIKit.kindColor(kind)
-	bannerLabel.TextTransparency = 0
+	UIKit.fadeText(bannerLabel, 0, 0)
 	UIKit.pop(bannerLabel, 0.25)
 	task.delay(4.5, function()
 		if token == bannerToken then
-			UIKit.tween(bannerLabel, 0.5, { TextTransparency = 1 })
+			UIKit.fadeText(bannerLabel, 0.5, 1)
 		end
 	end)
 end
@@ -400,7 +404,8 @@ function HUD.floater(text: string, kind: string?)
 	)
 	anchored(label, 0.5, 0.5)
 	UIKit.textStroke(label, 2.5)
-	UIKit.tween(label, 1.2, { Position = label.Position - UDim2.fromOffset(0, 90), TextTransparency = 1 })
+	UIKit.tween(label, 1.2, { Position = label.Position - UDim2.fromOffset(0, 90) })
+	UIKit.fadeText(label, 1.2, 1)
 	task.delay(1.25, function()
 		label:Destroy()
 	end)
@@ -493,7 +498,8 @@ end
 
 local function slowUpdate()
 	local state = ClientState.get()
-	local text = objectiveText(state)
+	local text = if ClientState.hasData() then objectiveText(state) else "⏳ Loading your nest..."
+
 	if objectiveLabel.Text ~= text then
 		objectiveLabel.Text = text
 	end
@@ -679,10 +685,19 @@ function HUD.start()
 	RunService.RenderStepped:Connect(frameUpdate)
 	task.spawn(function()
 		while true do
-			slowUpdate()
+			local ok, err = pcall(function(): string?
+				slowUpdate()
+				return nil
+			end)
+			if not ok then
+				warn("[NestHeist] HUD update error:", err)
+			end
 			local scale = computeScale()
-			for _, s in responsiveScales do
-				if math.abs(s.Scale - scale) > 0.001 then
+			for index = #responsiveScales, 1, -1 do
+				local s = responsiveScales[index]
+				if not s.Parent then
+					table.remove(responsiveScales, index)
+				elseif math.abs(s.Scale - scale) > 0.001 then
 					s.Scale = scale
 				end
 			end

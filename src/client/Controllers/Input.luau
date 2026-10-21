@@ -17,6 +17,7 @@ local Input = {}
 local dashReadyAt = 0
 local hooked: { [Tool]: boolean } = {}
 local lastToolUse = 0
+local toolReadyAt: { [string]: number } = {}
 
 local function dash(_actionName: string, inputState: Enum.UserInputState, _input: InputObject): Enum.ContextActionResult
 	if inputState ~= Enum.UserInputState.Begin then
@@ -79,10 +80,19 @@ local function hookTool(tool: Instance)
 	end
 	hooked[tool] = true
 	tool.Activated:Connect(function()
-		if os.clock() - lastToolUse < 0.25 then
+		local now = os.clock()
+		if now - lastToolUse < 0.25 then
 			return
 		end
-		lastToolUse = os.clock()
+		lastToolUse = now
+		-- Mirror the server cooldown so a click that would be ignored says why.
+		local readyAt = toolReadyAt[key] or 0
+		if now < readyAt then
+			HUD.floater(string.format("%s recharging %.1fs", tool.Name, readyAt - now), "warn")
+			return
+		end
+		local cooldown = if key == "Net" then Config.Tools.Net.cooldown else Config.Tools.Slime.cooldown
+		toolReadyAt[key] = now + cooldown + 0.1
 		local mouse = player:GetMouse()
 		Remotes.UseTool:FireServer(key, mouse.Hit.Position)
 	end)

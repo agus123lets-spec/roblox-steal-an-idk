@@ -12,6 +12,7 @@ local Builders = require(ReplicatedStorage.Shared.Builders)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local PlotService = require(script.Parent.PlotService)
+local Loop = require(script.Parent.Loop)
 
 type Session = PlayerService.Session
 type Plot = PlotService.Plot
@@ -31,6 +32,7 @@ export type Egg = {
 	jackpot: boolean,
 	model: Model,
 	shell: BasePart,
+	gui: BillboardGui,
 	title: TextLabel,
 	subtitle: TextLabel,
 	state: string, -- "nest" | "carried" | "dropped" | "incubating" | "gone"
@@ -49,6 +51,8 @@ export type Egg = {
 	weld: Weld?,
 	beam: BasePart?,
 	warnedAt: number,
+	underdogPaid: boolean,
+	recoveredPaid: boolean,
 }
 
 local EggService = {}
@@ -78,6 +82,11 @@ local function eggTitle(egg: Egg): string
 end
 
 local function setLabel(egg: Egg, title: string, subtitle: string)
+	-- Incubating eggs are described by the incubator's own label instead.
+	local visible = egg.state ~= "incubating"
+	if egg.gui.Enabled ~= visible then
+		egg.gui.Enabled = visible
+	end
 	if egg.title.Text ~= title then
 		egg.title.Text = title
 	end
@@ -142,6 +151,7 @@ local function createEgg(biome: string, rarity: string, jackpot: boolean): Egg
 		jackpot = jackpot,
 		model = model,
 		shell = shell,
+		gui = gui,
 		title = title,
 		subtitle = subtitle,
 		state = "new",
@@ -160,6 +170,8 @@ local function createEgg(biome: string, rarity: string, jackpot: boolean): Egg
 		weld = nil,
 		beam = nil,
 		warnedAt = 0,
+		underdogPaid = false,
+		recoveredPaid = false,
 	}
 	eggs[egg.id] = egg
 	model.Parent = eggsFolder
@@ -192,6 +204,7 @@ local function freeIncubator(egg: Egg)
 		local label = plot.incubatorLabels[egg.incubatorIndex]
 		if label then
 			label.Text = "Empty"
+			label.TextColor3 = Color3.new(1, 1, 1)
 		end
 	end
 	egg.incubatorPlot = nil
@@ -267,9 +280,33 @@ local function incubate(egg: Egg, owner: Player, plot: Plot, index: number, dura
 	egg.hatchAt = now() + duration
 	egg.remaining = 0
 	incubators[plot][index] = egg
+	local label = plot.incubatorLabels[index]
+	if label then
+		label.Text = `{eggTitle(egg)} • {math.ceil(duration)}s`
+		label.TextColor3 = rarityInfo(egg).color
+	end
 	anchorAt(egg, plot.incubatorSpots[index].CFrame)
 	setLabel(egg, eggTitle(egg), `Hatching in {math.ceil(duration)}s`)
 	updateStealPrompt(egg)
+end
+
+local function addJackpotBeam(egg: Egg, position: Vector3)
+	if egg.beam then
+		return
+	end
+	local beam = Builders.cylinder(
+		eggsFolder,
+		"JackpotBeam",
+		160,
+		3,
+		CFrame.new(position + Vector3.new(0, 80, 0)),
+		Color3.fromRGB(255, 214, 70),
+		Enum.Material.Neon
+	)
+	beam.Transparency = 0.55
+	beam.CastShadow = false
+	Builders.noCollide(beam)
+	egg.beam = beam
 end
 
 local function placeInNest(egg: Egg, nest: Nest)
@@ -283,11 +320,19 @@ local function placeInNest(egg: Egg, nest: Nest)
 	anchorAt(egg, nest.spot)
 	setLabel(egg, eggTitle(egg), Config.BiomeByKey[nest.biome].name)
 	setPrompt(egg, "Grab Egg", Config.Steal.grabHold, nil)
+	if egg.jackpot then
+		addJackpotBeam(egg, nest.spot.Position)
+	end
 end
 
 -- Sends a lost egg back: to the nest it was stolen from, else its wild nest, else gone.
 local function returnToOrigin(egg: Egg)
 	if egg.state == "gone" then
+		return
+	end
+	-- The engine can delete a carried egg (e.g. its carrier fell into the void); just forget it.
+	if not egg.shell:IsDescendantOf(workspace) then
+		destroyEgg(egg)
 		return
 	end
 	local remaining = egg.remaining
@@ -296,13 +341,15 @@ local function returnToOrigin(egg: Egg)
 	freeIncubator(egg)
 
 	local owner = egg.baseOwner
-	if owner and owner.Parent and PlayerService.get(owner) then
+	local ownerSession = if owner and owner.Parent then PlayerService.get(owner) else nil
+	if owner and ownerSession then
 		local plot = PlotService.getPlot(owner)
 		local index = if plot then freeIncubatorIndex(plot) else nil
 		if plot and index then
 			local full = rarityInfo(egg).hatchTime
 			incubate(egg, owner, plot, index, if remaining > 0 then math.min(remaining, full) else full)
 			egg.stolenFrom = nil
+			PlayerService.clearRevenge(ownerSession)
 			PlayerService.notify(owner, `Your {egg.rarity} egg flew back home!`, "success")
 			return
 		end
@@ -319,21 +366,6 @@ end
 local function spawnInNest(nest: Nest, rarity: string, jackpot: boolean): Egg
 	local egg = createEgg(nest.biome, rarity, jackpot)
 	placeInNest(egg, nest)
-	if jackpot then
-		local beam = Builders.cylinder(
-			eggsFolder,
-			"JackpotBeam",
-			160,
-			3,
-			CFrame.new(nest.spot.Position + Vector3.new(0, 80, 0)),
-			Color3.fromRGB(255, 214, 70),
-			Enum.Material.Neon
-		)
-		beam.Transparency = 0.55
-		beam.CastShadow = false
-		Builders.noCollide(beam)
-		egg.beam = beam
-	end
 	return egg
 end
 
@@ -399,7 +431,8 @@ local function theft(egg: Egg, thief: Session, victim: Player)
 	if victim == thief.player then
 		return
 	end
-	egg.stolenFrom = victim
+	-- The original owner keeps their claim even if the egg changes hands again.
+	egg.stolenFrom = egg.stolenFrom or victim
 	local feathers = rarityInfo(egg).feathers * (if egg.jackpot then 2 else 1)
 	local victimSession = PlayerService.get(victim)
 	if victimSession then
@@ -415,7 +448,8 @@ local function theft(egg: Egg, thief: Session, victim: Player)
 			`🚨 {thief.player.DisplayName} stole your {egg.rarity} egg! Net them within {Config.Steal.revengeDuration}s to get it back.{bonusText}`,
 			"danger"
 		)
-		if victimSession.data.speed > thief.data.speed * Config.Steal.underdogRatio then
+		if not egg.underdogPaid and victimSession.data.speed > thief.data.speed * Config.Steal.underdogRatio then
+			egg.underdogPaid = true
 			PlayerService.addFeathers(thief, feathers)
 			PlayerService.notify(thief.player, `Underdog heist! +{feathers} 🪶`, "rare")
 		end
@@ -507,6 +541,14 @@ function EggService.onPromptTriggered(egg: Egg, player: Player)
 	if PlayerService.isStunned(session) or (root.Position - egg.shell.Position).Magnitude > 18 then
 		return
 	end
+	if not PlotService.getPlot(player) then
+		PlayerService.notify(
+			player,
+			"You need a nest to bring eggs home to. This server is full, try another one!",
+			"warn"
+		)
+		return
+	end
 
 	if egg.state == "nest" then
 		local nest = egg.nest
@@ -524,12 +566,18 @@ function EggService.onPromptTriggered(egg: Egg, player: Player)
 		if egg.stolenFrom == player then
 			egg.stolenFrom = nil
 			attachTo(egg, session)
-			PlayerService.addFeathers(session, Config.Steal.recoverFeathers)
-			PlayerService.notify(
-				player,
-				`🎯 Revenge! You got your egg back! (+{Config.Steal.recoverFeathers} 🪶)`,
-				"success"
-			)
+			PlayerService.clearRevenge(session)
+			if egg.recoveredPaid then
+				PlayerService.notify(player, "🎯 Revenge! You got your egg back!", "success")
+			else
+				egg.recoveredPaid = true
+				PlayerService.addFeathers(session, Config.Steal.recoverFeathers)
+				PlayerService.notify(
+					player,
+					`🎯 Revenge! You got your egg back! (+{Config.Steal.recoverFeathers} 🪶)`,
+					"success"
+				)
+			end
 		else
 			attachTo(egg, session)
 			if previous and previous ~= player and previous.Parent then
@@ -645,85 +693,83 @@ local function spawnJackpot()
 	PlayerService.announce(`⭐ A JACKPOT EGG appeared in {biome.icon} {biome.name}! Follow the golden beam!`, "rare")
 end
 
-local function depositLoop()
-	while true do
-		task.wait(0.1)
-		local t = now()
-		for player, egg in carried do
-			local session = PlayerService.get(player)
-			local root = PlayerService.rootOf(player)
-			local plot = PlotService.getPlot(player)
-			if session and root and plot and PlotService.isInside(plot, root.Position, 1) then
-				local index = freeIncubatorIndex(plot)
-				if index then
-					deposit(egg, session, plot, index)
-				elseif t - egg.warnedAt > 4 then
-					egg.warnedAt = t
-					PlayerService.notify(player, "All your incubators are busy! Wait for one to hatch.", "warn")
-				end
+local function depositTick()
+	local t = now()
+	for player, egg in carried do
+		local session = PlayerService.get(player)
+		local root = PlayerService.rootOf(player)
+		local plot = PlotService.getPlot(player)
+		if session and root and plot and PlotService.isInside(plot, root.Position, 1) then
+			local index = freeIncubatorIndex(plot)
+			if index then
+				deposit(egg, session, plot, index)
+			elseif t - egg.warnedAt > 4 then
+				egg.warnedAt = t
+				PlayerService.notify(player, "All your incubators are busy! Wait for one to hatch.", "warn")
 			end
 		end
 	end
 end
 
-local function tickLoop()
-	while true do
-		task.wait(0.25)
-		local t = now()
-		-- Incubators
-		for plot, slots in incubators do
-			for index, egg in slots do
-				local owner = egg.baseOwner
-				local session = if owner then PlayerService.get(owner) else nil
-				local label = plot.incubatorLabels[index]
-				if t >= egg.hatchAt then
-					if session and PlayerService.hasRoom(session) then
-						hatch(egg, session, false)
-					else
-						setLabel(egg, eggTitle(egg), "Pen full! Sell a pet")
-						if label then
-							label.Text = "Pen full!"
-						end
-						if session and t - egg.warnedAt > 10 then
-							egg.warnedAt = t
-							PlayerService.notify(
-								session.player,
-								"Your pen is full! Sell a pet or buy more slots so your egg can hatch.",
-								"warn"
-							)
-						end
-					end
+local function hatchTick()
+	local t = now()
+	-- Forget eggs the engine deleted (e.g. carried into the void).
+	for _, egg in eggs do
+		if egg.state ~= "gone" and not egg.shell:IsDescendantOf(workspace) then
+			destroyEgg(egg)
+		end
+	end
+	-- Incubators
+	for plot, slots in incubators do
+		for index, egg in slots do
+			local owner = egg.baseOwner
+			local session = if owner then PlayerService.get(owner) else nil
+			local label = plot.incubatorLabels[index]
+			if t >= egg.hatchAt then
+				if session and PlayerService.hasRoom(session) then
+					hatch(egg, session, false)
 				else
-					local text = `Hatching in {math.ceil(egg.hatchAt - t)}s`
-					setLabel(egg, eggTitle(egg), text)
-					if label and label.Text ~= text then
-						label.Text = text
+					setLabel(egg, eggTitle(egg), "Pen full! Sell a pet")
+					if label then
+						label.Text = "Pen full!"
 					end
+					if session and t - egg.warnedAt > 10 then
+						egg.warnedAt = t
+						PlayerService.notify(
+							session.player,
+							"Your pen is full! Sell a pet or buy more slots so your egg can hatch.",
+							"warn"
+						)
+					end
+				end
+			else
+				local seconds = math.ceil(egg.hatchAt - t)
+				setLabel(egg, eggTitle(egg), `Hatching in {seconds}s`)
+				local text = `{eggTitle(egg)} • {seconds}s`
+				if label and label.Text ~= text then
+					label.Text = text
 				end
 			end
 		end
-		-- Dropped eggs expire back to where they came from.
-		for _, egg in eggs do
-			if egg.state == "dropped" then
-				if t >= egg.dropExpires then
-					returnToOrigin(egg)
-				else
-					setLabel(egg, eggTitle(egg), `Dropped! {math.ceil(egg.dropExpires - t)}s`)
-				end
+	end
+	-- Dropped eggs expire back to where they came from.
+	for _, egg in eggs do
+		if egg.state == "dropped" then
+			if t >= egg.dropExpires then
+				returnToOrigin(egg)
+			else
+				setLabel(egg, eggTitle(egg), `Dropped! {math.ceil(egg.dropExpires - t)}s`)
 			end
 		end
 	end
 end
 
-local function respawnLoop()
-	while true do
-		local t = now()
-		for _, nest in nests do
-			if nest.egg == nil and t >= nest.respawnAt then
-				spawnInNest(nest, PetLogic.rollEggRarity(roll, 1), false)
-			end
+local function respawnTick()
+	local t = now()
+	for _, nest in nests do
+		if nest.egg == nil and t >= nest.respawnAt then
+			spawnInNest(nest, PetLogic.rollEggRarity(roll, 1), false)
 		end
-		task.wait(1)
 	end
 end
 
@@ -747,6 +793,11 @@ local function onSessionEnding(session: Session)
 				if PlayerService.hasRoom(session) then
 					hatch(incubating, session, true)
 				else
+					-- No room: pay out what the pet would sell for instead of losing the egg.
+					local pet = PetLogic.petFor(incubating.biome, incubating.rarity)
+					if pet then
+						PlayerService.addCoins(session, pet.income * Config.Economy.sellSeconds)
+					end
 					destroyEgg(incubating)
 				end
 			end
@@ -787,16 +838,10 @@ function EggService.start()
 	PlayerService.onCharacterLost(onCharacterLost)
 	PlayerService.onSessionEnding(onSessionEnding)
 
-	task.spawn(respawnLoop)
-	task.spawn(depositLoop)
-	task.spawn(tickLoop)
-	task.spawn(function()
-		task.wait(Config.Jackpot.firstDelay)
-		while true do
-			spawnJackpot()
-			task.wait(Config.Jackpot.interval)
-		end
-	end)
+	Loop.every("Respawn", 1, respawnTick, 0)
+	Loop.every("Deposit", 0.1, depositTick)
+	Loop.every("Hatch", 0.25, hatchTick)
+	Loop.every("Jackpot", Config.Jackpot.interval, spawnJackpot, Config.Jackpot.firstDelay)
 end
 
 return EggService

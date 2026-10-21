@@ -56,20 +56,14 @@ local function confetti(parent: Instance, colors: { Color3 })
 	end
 end
 
-local function show(data: HatchData)
-	local info = Config.PetByKey[data.kind]
-	if not info then
-		return
-	end
-	local rarity = Config.Rarities[info.rarity]
-	local eggRarity = Config.Rarities[data.eggRarity] or rarity
-	local sizeInfo = PetLogic.sizeInfo(data.size)
-	local scale = if sizeInfo then sizeInfo.scale else 1
-
-	local overlay = UIKit.frame(gui, "Overlay", UDim2.fromScale(1, 1), UDim2.new(), Color3.new(0, 0, 0), 1)
-	overlay.Active = true
-	UIKit.tween(overlay, 0.3, { BackgroundTransparency = 0.45 })
-
+local function present(
+	data: HatchData,
+	overlay: Frame,
+	info: Config.PetInfo,
+	rarity: Config.RarityInfo,
+	eggRarity: Config.RarityInfo,
+	scale: number
+)
 	local stage = UIKit.frame(overlay, "Stage", UDim2.fromOffset(420, 520), UDim2.fromScale(0.5, 0.5), C.panel, 1)
 	stage.AnchorPoint = Vector2.new(0.5, 0.5)
 	HUD.responsive(stage)
@@ -133,7 +127,7 @@ local function show(data: HatchData)
 	viewport.BackgroundTransparency = 0.2
 	viewport.Ambient = Color3.fromRGB(170, 170, 185)
 	viewport.LightColor = Color3.fromRGB(255, 250, 240)
-	viewport.LightDirection = Vector3.new(-0.4, -1, -0.6)
+	viewport.LightDirection = Vector3.new(-0.4, -1, 0.6) -- from the camera side, onto the pet's face
 	viewport.Parent = card
 	UIKit.corner(viewport, UDim.new(0, 16))
 	local camera = Instance.new("Camera")
@@ -197,13 +191,47 @@ local function show(data: HatchData)
 	end)
 
 	local started = os.clock()
-	while not done and os.clock() - started < 7 do
+	while not done and os.clock() - started < 5 do
 		task.wait(0.05)
 	end
 	connection:Disconnect()
+end
+
+local function show(data: HatchData)
+	local info = Config.PetByKey[data.kind]
+	if not info then
+		return
+	end
+	local rarity = Config.Rarities[info.rarity]
+	local eggRarity = Config.Rarities[data.eggRarity] or rarity
+	local sizeInfo = PetLogic.sizeInfo(data.size)
+	local scale = if sizeInfo then sizeInfo.scale else 1
+
+	-- Not Active: the player can keep moving and looking around while the card is up.
+	local overlay = UIKit.frame(gui, "Overlay", UDim2.fromScale(1, 1), UDim2.new(), Color3.new(0, 0, 0), 1)
+	overlay.Active = false
+	UIKit.tween(overlay, 0.3, { BackgroundTransparency = 0.6 })
+	local ok, err = pcall(function(): string?
+		present(data, overlay, info, rarity, eggRarity, scale)
+		return nil
+	end)
+	if not ok then
+		warn("[NestHeist] Hatch reveal failed:", err)
+	end
 	UIKit.tween(overlay, 0.2, { BackgroundTransparency = 1 })
 	task.wait(0.15)
 	overlay:Destroy()
+end
+
+-- Mid-heist, don't cover the screen: wait until the egg is home, or fall back to a toast.
+local function compact(data: HatchData)
+	HUD.toast(
+		`🐣 Hatched {PetLogic.describe({ id = "", kind = data.kind, size = data.size, mutation = data.mutation })}! +{Format.money(
+			data.income
+		)}/s`,
+		"rare"
+	)
+	Sounds.play("hatch")
 end
 
 local function runQueue()
@@ -211,8 +239,17 @@ local function runQueue()
 	while #queue > 0 do
 		local data = table.remove(queue, 1)
 		if data then
+			local waited = 0
+			while HUD.isCarrying() and waited < 20 do
+				task.wait(0.25)
+				waited += 0.25
+			end
 			local ok, err = pcall(function(): string?
-				show(data)
+				if HUD.isCarrying() then
+					compact(data)
+				else
+					show(data)
+				end
 				return nil
 			end)
 			if not ok then

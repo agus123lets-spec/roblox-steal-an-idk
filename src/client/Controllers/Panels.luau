@@ -281,11 +281,52 @@ end
 -- Window
 ---------------------------------------------------------------------------
 local tabButtons: { [string]: TextButton } = {}
+local lastSignature = ""
+
+local function sortedKeys(map: { [string]: boolean }): string
+	local keys = {}
+	for key in map do
+		table.insert(keys, key)
+	end
+	table.sort(keys)
+	return table.concat(keys, ",")
+end
+
+-- Everything the open window shows. Coins change every second, so only affordability is included;
+-- rebuilding rows on every coin tick would eat clicks.
+local function viewSignature(state: ClientState.State): string
+	local nextShoes = Config.Shoes[state.shoesLevel + 1]
+	local slotCost = PetLogic.slotCost(state.slots)
+	local petIds = {}
+	for _, pet in state.pets do
+		table.insert(petIds, pet.id)
+	end
+	local parts = {
+		current or "",
+		shopTab,
+		tostring(state.shoesLevel),
+		tostring(state.slots),
+		tostring(state.feathers),
+		state.equippedTrail,
+		tostring(nextShoes ~= nil and state.coins >= nextShoes.cost),
+		tostring(slotCost ~= nil and state.coins >= slotCost),
+		tostring(state.coins >= Config.Tools.Slime.cost),
+		sortedKeys(state.tools),
+		sortedKeys(state.trails),
+		table.concat(petIds, ","),
+	}
+	if current == "Shop" and shopTab == "Feathers" then
+		-- Boost timers are shown here; refresh them every few seconds.
+		table.insert(parts, tostring(math.floor(workspace:GetServerTimeNow() / 5)))
+	end
+	return table.concat(parts, "|")
+end
 
 function Panels.refresh()
 	if not current then
 		return
 	end
+	lastSignature = viewSignature(ClientState.get())
 	clearContent()
 	rowOrder = 0
 	local state = ClientState.get()
@@ -329,6 +370,7 @@ function Panels.start()
 
 	window = UIKit.frame(gui, "Window", UDim2.fromOffset(620, 470), UDim2.fromScale(0.5, 0.52), C.panel, 0.02)
 	window.AnchorPoint = Vector2.new(0.5, 0.5)
+	window.Active = true -- clicks on the window must not fire an equipped tool
 	window.Visible = false
 	UIKit.corner(window, UDim.new(0, 18))
 	UIKit.stroke(window, C.stroke, 4)
@@ -383,11 +425,8 @@ function Panels.start()
 		Panels.toggle("Pets")
 	end)
 
-	-- Coins change every second, so throttle rebuilding the open window.
-	local lastRefresh = 0
-	ClientState.onChanged(function()
-		if current and os.clock() - lastRefresh > 0.5 then
-			lastRefresh = os.clock()
+	ClientState.onChanged(function(state)
+		if current and viewSignature(state) ~= lastSignature then
 			Panels.refresh()
 		end
 	end)

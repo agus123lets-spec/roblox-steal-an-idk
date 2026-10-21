@@ -9,6 +9,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local PlotService = require(script.Parent.PlotService)
+local Loop = require(script.Parent.Loop)
 
 type Session = PlayerService.Session
 
@@ -131,23 +132,20 @@ function TrainingService.start()
 		jogBank[session.player] = nil
 	end)
 
-	task.spawn(function()
-		local floaterTimer = 0
-		while true do
-			local dt = task.wait(1 / 15)
-			local t = PlayerService.now()
-			trackTick(t)
-			jogTick(dt)
-			floaterTimer += dt
-			if floaterTimer >= 1 then
-				floaterTimer = 0
-				for player, amount in jogBank do
-					if player.Parent and amount > 0 then
-						Remotes.Floater:FireClient(player, `+{Format.short(amount)} ⚡`, "speed")
-					end
+	local floaterTimer = 0
+	Loop.every("Training", 1 / 15, function(dt: number)
+		local t = PlayerService.now()
+		trackTick(t)
+		jogTick(dt)
+		floaterTimer += dt
+		if floaterTimer >= 1 then
+			floaterTimer = 0
+			for player, amount in jogBank do
+				if player.Parent and amount > 0 then
+					Remotes.Floater:FireClient(player, `+{Format.short(amount)} ⚡`, "speed")
 				end
-				table.clear(jogBank)
 			end
+			table.clear(jogBank)
 		end
 	end)
 end

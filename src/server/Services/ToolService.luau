@@ -10,6 +10,7 @@ local Builders = require(ReplicatedStorage.Shared.Builders)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local EggService = require(script.Parent.EggService)
+local Loop = require(script.Parent.Loop)
 
 type Session = PlayerService.Session
 
@@ -62,6 +63,10 @@ end
 function ToolService.giveTools(player: Player)
 	local session = PlayerService.get(player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		local waited = player:WaitForChild("Backpack", 5)
+		backpack = if waited and waited:IsA("Backpack") then waited else nil
+	end
 	if not session or not backpack then
 		return
 	end
@@ -264,6 +269,10 @@ local function onUseTool(player: Player, key: any, aim: any)
 	if type(key) ~= "string" or typeof(aim) ~= "Vector3" then
 		return
 	end
+	local magnitude = aim.Magnitude
+	if magnitude ~= magnitude or magnitude > 1e5 then
+		return -- NaN or absurd aim from a modified client
+	end
 	local session = PlayerService.get(player)
 	local root = PlayerService.rootOf(player)
 	if not session or not root or not owns(session, key) or PlayerService.isStunned(session) then
@@ -300,12 +309,7 @@ function ToolService.start()
 	PlayerService.onSessionEnding(function(session: Session)
 		cooldowns[session.player] = nil
 	end)
-	task.spawn(function()
-		while true do
-			task.wait(0.1)
-			puddleTick()
-		end
-	end)
+	Loop.every("Slime", 0.1, puddleTick)
 end
 
 return ToolService
