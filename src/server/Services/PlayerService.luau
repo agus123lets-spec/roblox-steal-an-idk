@@ -4,12 +4,14 @@
 
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService: RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local PetLogic = require(ReplicatedStorage.Shared.PetLogic)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
+local Loop = require(script.Parent.Loop)
 
 export type Session = {
 	player: Player,
@@ -219,7 +221,8 @@ local function applyMovement(session: Session)
 	if math.abs(humanoid.WalkSpeed - walkSpeed) > 0.01 then
 		humanoid.WalkSpeed = walkSpeed
 	end
-	if humanoid.JumpHeight ~= jumpHeight then
+	-- JumpHeight is stored as a float32, so compare with a tolerance.
+	if math.abs(humanoid.JumpHeight - jumpHeight) > 0.01 then
 		humanoid.JumpHeight = jumpHeight
 	end
 end
@@ -255,6 +258,18 @@ end
 
 function PlayerService.isRevengeTarget(hunter: Session, target: Player): boolean
 	return hunter.revengeTargetId == target.UserId and PlayerService.now() < hunter.revengeUntil
+end
+
+-- Called when the victim already got their egg back, so the "hunt the thief" UI goes away.
+function PlayerService.clearRevenge(session: Session)
+	if session.revengeUntil == 0 then
+		return
+	end
+	session.revengeTargetId = 0
+	session.revengeUntil = 0
+	if session.player.Parent then
+		Remotes.Revenge:FireClient(session.player, nil, 0)
+	end
 end
 
 -- Can `attacker` net or rob `target`? Revenge always allowed; otherwise the fair-play rule.
@@ -320,11 +335,19 @@ end
 local function welcome(session: Session, offlineEarned: number)
 	local player = session.player
 	if not session.persistent then
-		PlayerService.notify(
-			player,
-			"Saving is off in this test. Publish the game and enable Studio API access to save progress.",
-			"warn"
-		)
+		if RunService:IsStudio() then
+			PlayerService.notify(
+				player,
+				"Saving is off in this test. Publish the game and enable Studio API access to save progress.",
+				"warn"
+			)
+		else
+			PlayerService.notify(
+				player,
+				"We couldn't load your saved progress, so this session won't save. Please rejoin in a minute.",
+				"danger"
+			)
+		end
 	end
 	if offlineEarned > 0 then
 		PlayerService.notify(
@@ -446,61 +469,49 @@ function PlayerService.start()
 	end
 
 	-- Passive income.
-	task.spawn(function()
-		while true do
-			task.wait(1)
-			for _, session in sessions do
-				if not session.ended then
-					if session.income > 0 then
-						PlayerService.addCoins(session, session.income)
-					end
-					updateLeaderstats(session)
+	Loop.every("Income", 1, function()
+		for _, session in sessions do
+			if not session.ended then
+				if session.income > 0 then
+					PlayerService.addCoins(session, session.income)
 				end
+				updateLeaderstats(session)
 			end
 		end
 	end)
 
 	-- Walk speed effects and client sync.
-	task.spawn(function()
-		while true do
-			task.wait(0.2)
-			for _, session in sessions do
-				if not session.ended then
-					applyMovement(session)
-					if session.dirty then
-						session.dirty = false
-						Remotes.State:FireClient(session.player, buildState(session))
-					end
+	Loop.every("Sync", 0.2, function()
+		for _, session in sessions do
+			if not session.ended then
+				applyMovement(session)
+				if session.dirty then
+					session.dirty = false
+					Remotes.State:FireClient(session.player, buildState(session))
 				end
 			end
 		end
 	end)
 
 	-- Autosave.
-	task.spawn(function()
-		while true do
-			task.wait(Config.Data.autosaveInterval)
-			for player, session in sessions do
-				if session.persistent and not session.ended then
-					task.spawn(DataService.save, player, session.data, false)
-				end
+	Loop.every("Autosave", Config.Data.autosaveInterval, function()
+		for player, session in sessions do
+			if session.persistent and not session.ended then
+				task.spawn(DataService.save, player, session.data, false)
 			end
 		end
 	end)
 
+	-- On shutdown, save everyone still here and wait for every in-flight save
+	-- (including ones started by PlayerRemoving) before the server closes.
 	game:BindToClose(function()
-		local pending = 0
 		for player, session in sessions do
 			if session.persistent and not session.ended then
-				pending += 1
-				task.spawn(function()
-					DataService.save(player, session.data, true)
-					pending -= 1
-				end)
+				task.spawn(DataService.save, player, session.data, true)
 			end
 		end
 		local deadline = os.clock() + 25
-		while pending > 0 and os.clock() < deadline do
+		while DataService.inflight() > 0 and os.clock() < deadline do
 			task.wait(0.1)
 		end
 	end)
