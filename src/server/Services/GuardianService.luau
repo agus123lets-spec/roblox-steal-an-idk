@@ -150,7 +150,10 @@ local function step(guardian: Guardian, dt: number, t: number)
 			guardian.target = nil
 			setState(guardian, "return")
 		else
-			guardian.look = flat(root.Position - guardian.position).Unit
+			local toTarget = flat(root.Position - guardian.position)
+			if toTarget.Magnitude > 0.01 then
+				guardian.look = toTarget.Unit
+			end
 			if t >= guardian.stateUntil then
 				setState(guardian, "chase")
 			end

@@ -4,12 +4,14 @@
 
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService: RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local PetLogic = require(ReplicatedStorage.Shared.PetLogic)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
+local Loop = require(script.Parent.Loop)
 
 export type Session = {
 	player: Player,
