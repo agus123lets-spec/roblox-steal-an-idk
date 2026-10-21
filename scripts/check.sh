@@ -26,4 +26,5 @@ fi
 echo "== lune tests"
 lune run tests/logic.spec
 lune run tests/place.spec
+lune run tests/remotes.spec
 echo "All checks passed"

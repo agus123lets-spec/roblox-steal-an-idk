@@ -581,7 +581,8 @@ local function decorate(parent: Instance, biome: Config.BiomeInfo, rng: Rng.Rng,
 			if p then
 				cylinder(decor, "LollipopStick", 7, 0.5, CFrame.new(p + Vector3.new(0, 3.5, 0)), WHITE)
 				local face = CFrame.new(p + Vector3.new(0, 8.5, 0))
-					* CFrame.Angles(math.rad(90), rng.range(0, math.pi), 0)
+					* CFrame.Angles(0, rng.range(0, math.pi), 0)
+					* CFrame.Angles(math.rad(90), 0, 0)
 				cylinder(decor, "Lollipop", 0.6, 5, face, swirls[rng.int(1, #swirls)])
 				cylinder(decor, "LollipopSwirl", 0.7, 2.8, face, WHITE)
 			end

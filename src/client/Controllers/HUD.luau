@@ -195,7 +195,8 @@ local function buildToasts()
 	local banner = UIKit.frame(gui, "Banner", UDim2.fromOffset(720, 50), UDim2.fromScale(0.5, 0.27), C.panel, 1)
 	anchored(banner, 0.5, 0.5)
 	HUD.responsive(banner)
-	bannerLabel = UIKit.label(banner, "Text", "", UDim2.fromScale(1, 1), UDim2.new(), C.coins)
+	bannerLabel = UIKit.label(banner, "Text", "", UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5), C.coins)
+	anchored(bannerLabel, 0.5, 0.5) -- pops grow from the centre
 	UIKit.textStroke(bannerLabel, 3)
 	UIKit.fadeText(bannerLabel, 0, 1)
 end

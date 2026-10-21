@@ -103,7 +103,8 @@ local function present(
 	confetti(overlay, { rarity.color, C.coins, Color3.new(1, 1, 1), C.feathers })
 
 	-- 3) Card with the pet in 3D
-	local card = UIKit.frame(stage, "Card", UDim2.fromScale(1, 1), UDim2.new(), C.panel, 0.02)
+	local card = UIKit.frame(stage, "Card", UDim2.fromScale(1, 1), UDim2.fromScale(0.5, 0.5), C.panel, 0.02)
+	card.AnchorPoint = Vector2.new(0.5, 0.5) -- pop grows from the centre
 	UIKit.corner(card, UDim.new(0, 20))
 	local stroke = UIKit.stroke(card, rarity.color, 5)
 	stroke.Transparency = 0
