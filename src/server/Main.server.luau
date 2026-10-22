@@ -1,5 +1,5 @@
 -- Server entry point: makes sure the world exists, then starts every service.
-local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Services = script.Parent.Services
@@ -19,6 +19,11 @@ local GuardianService = require(Services.GuardianService)
 local TrainingService = require(Services.TrainingService)
 local ToolService = require(Services.ToolService)
 local ShopService = require(Services.ShopService)
+local RewardService = require(Services.RewardService)
+local ProgressionService = require(Services.ProgressionService)
+local EventService = require(Services.EventService)
+local LeaderboardService = require(Services.LeaderboardService)
+local Actions = require(Services.Actions)
 
 local function start(name: string, service: { start: () -> () })
 	local ok, err = pcall(service.start)
@@ -33,6 +38,11 @@ start("GuardianService", GuardianService)
 start("TrainingService", TrainingService)
 start("ToolService", ToolService)
 start("ShopService", ShopService)
+start("RewardService", RewardService)
+start("ProgressionService", ProgressionService)
+start("EventService", EventService)
+start("LeaderboardService", LeaderboardService)
+start("Actions", Actions)
 -- Last, so every service has registered its session hooks before the first player loads.
 start("PlayerService", PlayerService)
 

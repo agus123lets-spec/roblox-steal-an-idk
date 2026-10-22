@@ -21,6 +21,7 @@ type HatchData = {
 	mutation: string?,
 	lucky: boolean,
 	isNew: boolean,
+	fused: boolean,
 	income: number,
 	eggRarity: string,
 }
@@ -113,7 +114,7 @@ local function present(
 	local rarityText = UIKit.label(
 		card,
 		"Rarity",
-		string.upper(info.rarity) .. "!",
+		if data.fused then "🧪 FUSED! " .. string.upper(info.rarity) else string.upper(info.rarity) .. "!",
 		UDim2.new(1, -20, 0, 50),
 		UDim2.fromOffset(10, 12),
 		rarity.color
@@ -273,6 +274,7 @@ function Reveal.start()
 			mutation = if type(payload.mutation) == "string" then payload.mutation else nil,
 			lucky = payload.lucky == true,
 			isNew = payload.isNew == true,
+			fused = payload.fused == true,
 			income = if type(payload.income) == "number" then payload.income else 0,
 			eggRarity = if type(payload.eggRarity) == "string" then payload.eggRarity else "Common",
 		})

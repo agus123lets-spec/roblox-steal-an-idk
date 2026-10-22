@@ -9,6 +9,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local PlotService = require(script.Parent.PlotService)
+local RewardService = require(script.Parent.RewardService)
 local Loop = require(script.Parent.Loop)
 
 type Session = PlayerService.Session
@@ -67,6 +68,7 @@ local function completeLap(session: Session, lap: Lap, t: number)
 	PlayerService.addSpeed(session, reward)
 	local stats = session.data.stats
 	stats.laps += 1
+	RewardService.progress(session, "Laps", 1)
 	local best = stats.bestLap == 0 or lapTime < stats.bestLap
 	if best then
 		stats.bestLap = lapTime

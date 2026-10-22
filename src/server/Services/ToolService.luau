@@ -10,6 +10,7 @@ local Builders = require(ReplicatedStorage.Shared.Builders)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local EggService = require(script.Parent.EggService)
+local RewardService = require(script.Parent.RewardService)
 local Loop = require(script.Parent.Loop)
 
 type Session = PlayerService.Session
@@ -159,6 +160,7 @@ local function useNet(session: Session, root: BasePart, aim: Vector3)
 				if not allowed then
 					PlayerService.notify(player, reason or "You can't net that player.", "warn")
 				elseif EggService.knockLoose(best.player) then
+					RewardService.progress(session, "Net", 1)
 					local push = Vector3.new(direction.X, 0, direction.Z)
 					PlayerService.stun(best, info.stun, if push.Magnitude > 0.1 then push.Unit else nil)
 					PlayerService.notify(

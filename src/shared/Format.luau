@@ -57,6 +57,19 @@ function Format.clock(seconds: number): string
 	return string.format("%d:%02d", s // 60, s % 60)
 end
 
+-- 3725 -> "1h 2m", 125 -> "2m 5s", 9 -> "9s"
+function Format.duration(seconds: number): string
+	local s = math.max(0, math.ceil(seconds))
+	local hours = s // 3600
+	local minutes = (s % 3600) // 60
+	if hours > 0 then
+		return string.format("%dh %dm", hours, minutes)
+	elseif minutes > 0 then
+		return string.format("%dm %ds", minutes, s % 60)
+	end
+	return string.format("%ds", s)
+end
+
 function Format.seconds(seconds: number): string
 	return string.format("%.1fs", math.max(0, seconds))
 end

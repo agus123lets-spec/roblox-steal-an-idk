@@ -78,6 +78,26 @@ expectScripts({ "StarterPlayer", "StarterPlayerScripts", "Client", "Controllers"
 	"Input",
 })
 
+expectScripts({ "ReplicatedStorage", "Shared" }, "ModuleScript", { "Progression" })
+expectScripts({ "ServerScriptService", "Server", "Services" }, "ModuleScript", {
+	"Loop",
+	"EventState",
+	"EventService",
+	"RewardService",
+	"ProgressionService",
+	"LeaderboardService",
+	"Actions",
+})
+expectScripts({ "StarterPlayer", "StarterPlayerScripts", "Client", "Controllers" }, "ModuleScript", { "Followers" })
+expectScripts({ "StarterPlayer", "StarterPlayerScripts", "Client", "Controllers", "Pages" }, "ModuleScript", {
+	"Types",
+	"ShopPage",
+	"PetsPage",
+	"RewardsPage",
+	"IndexPage",
+	"RebirthPage",
+})
+
 local serverMain = find({ "ServerScriptService", "Server", "Main" })
 local playerStart = serverMain and string.find(serverMain.Source, 'start("PlayerService", PlayerService)', 1, true)
 local shopStart = serverMain and string.find(serverMain.Source, 'start("ShopService", ShopService)', 1, true)
@@ -89,7 +109,9 @@ local map = workspace:FindFirstChild("Map")
 check("Workspace.Map baked in", map ~= nil and map.ClassName == "Model")
 if map then
 	check("8 plots baked", #map.Plots:GetChildren() == 8)
-	check("3 biomes baked", #map.Biomes:GetChildren() == 3)
+	check("5 biomes baked", #map.Biomes:GetChildren() == 5)
+	local boards = map.Hub:FindFirstChild("Leaderboards")
+	check("leaderboards baked", boards ~= nil and #boards:GetChildren() == 4)
 	check("spawn baked", map.Hub:FindFirstChild("Spawn") ~= nil)
 	local parts = 0
 	for _, descendant in map:GetDescendants() do

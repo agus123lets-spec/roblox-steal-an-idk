@@ -235,7 +235,7 @@ local function buildHub(map: Instance)
 	end
 
 	local rng = Rng.new(99)
-	local treeAngles = { 12, 22, 34, 44, 140, 150, 160, 172, 184 }
+	local treeAngles = { 35, 43, 70, 76, 106, 112, 142, 148, 172 }
 	for _, angle in treeAngles do
 		local position = Config.polar(angle + rng.range(-3, 3), H.radius - rng.range(14, 30))
 		tree(hub, position, rng.range(0.9, 1.3), Color3.fromRGB(96, 176, 80))
@@ -615,6 +615,242 @@ local function decorate(parent: Instance, biome: Config.BiomeInfo, rng: Rng.Rng,
 				noCollide(puddle)
 			end
 		end
+	elseif biome.key == "Clockwork" then
+		local brass = Color3.fromRGB(214, 168, 84)
+		local iron = Color3.fromRGB(88, 90, 102)
+		local copper = Color3.fromRGB(196, 112, 72)
+		-- Standing gears
+		for _ = 1, 7 do
+			local p = freeSpot(25, 98, 12)
+			if p then
+				local radius = rng.range(3.5, 6)
+				local yaw = rng.range(0, math.pi)
+				local hub = CFrame.new(p + Vector3.new(0, radius + 0.8, 0)) * CFrame.Angles(0, yaw, 0)
+				local color = if rng.next() < 0.5 then brass else copper
+				cylinder(
+					decor,
+					"Gear",
+					1.2,
+					radius * 2,
+					hub * CFrame.Angles(math.rad(90), 0, 0),
+					color,
+					Enum.Material.Metal
+				)
+				for i = 1, 10 do
+					local a = i / 10 * math.pi * 2
+					block(
+						decor,
+						"Tooth",
+						Vector3.new(1.2, 1.4, 1.2),
+						hub * CFrame.Angles(0, 0, a) * CFrame.new(0, radius + 0.5, 0),
+						color,
+						Enum.Material.Metal
+					)
+				end
+				cylinder(decor, "Axle", 1.8, 1.6, hub * CFrame.Angles(math.rad(90), 0, 0), iron, Enum.Material.Metal)
+				block(
+					decor,
+					"Stand",
+					Vector3.new(1.2, radius + 0.8, 1.2),
+					CFrame.new(p + Vector3.new(0, (radius + 0.8) / 2, 0))
+						* CFrame.Angles(0, yaw, 0)
+						* CFrame.new(0, 0, 1.3),
+					iron,
+					Enum.Material.Metal
+				)
+			end
+		end
+		-- Steam pipes
+		for _ = 1, 5 do
+			local p = freeSpot(30, 95, 14)
+			if p then
+				local length = rng.range(10, 18)
+				local base = CFrame.new(p + Vector3.new(0, 1.4, 0)) * CFrame.Angles(0, rng.range(0, math.pi), 0)
+				cylinder(
+					decor,
+					"Pipe",
+					length,
+					1.8,
+					base * CFrame.Angles(0, 0, math.rad(90)),
+					copper,
+					Enum.Material.Metal
+				)
+				for _, side in { -1, 1 } do
+					cylinder(
+						decor,
+						"Joint",
+						0.8,
+						2.4,
+						base * CFrame.new(side * length / 2, 0, 0) * CFrame.Angles(0, 0, math.rad(90)),
+						brass,
+						Enum.Material.Metal
+					)
+				end
+				local vent = cylinder(decor, "Vent", 3, 1.4, base * CFrame.new(0, 1.5, 0), iron, Enum.Material.Metal)
+				local steam = Instance.new("ParticleEmitter")
+				steam.Name = "Steam"
+				steam.Color = ColorSequence.new(Color3.fromRGB(235, 235, 240))
+				steam.Transparency = NumberSequence.new(0.4, 1)
+				steam.Size = NumberSequence.new(0.8, 3)
+				steam.Rate = 4
+				steam.Lifetime = NumberRange.new(1.5, 2.5)
+				steam.Speed = NumberRange.new(3, 5)
+				steam.SpreadAngle = Vector2.new(12, 12)
+				steam.Parent = vent
+			end
+		end
+		-- Crates and lamps
+		for _ = 1, 6 do
+			local p = freeSpot(20, 100, 6)
+			if p then
+				local size = rng.range(2.5, 4)
+				block(
+					decor,
+					"Crate",
+					Vector3.new(size, size, size),
+					CFrame.new(p + Vector3.new(0, size / 2, 0)) * CFrame.Angles(0, rng.range(0, 3), 0),
+					Color3.fromRGB(150, 110, 70),
+					Enum.Material.WoodPlanks
+				)
+			end
+		end
+		for _ = 1, 4 do
+			local p = freeSpot(25, 95, 10)
+			if p then
+				lamp(decor, p, Color3.fromRGB(255, 200, 120))
+			end
+		end
+		-- Clock tower
+		local towerSpot = freeSpot(40, 80, 16)
+		if towerSpot then
+			block(
+				decor,
+				"ClockTower",
+				Vector3.new(7, 22, 7),
+				CFrame.new(towerSpot + Vector3.new(0, 11, 0)),
+				Color3.fromRGB(150, 120, 90),
+				Enum.Material.Brick
+			)
+			block(
+				decor,
+				"TowerCap",
+				Vector3.new(8.5, 1.5, 8.5),
+				CFrame.new(towerSpot + Vector3.new(0, 22.75, 0)),
+				brass,
+				Enum.Material.Metal
+			)
+			for i = 0, 3 do
+				local face = CFrame.new(towerSpot + Vector3.new(0, 17, 0))
+					* CFrame.Angles(0, i * math.pi / 2, 0)
+					* CFrame.new(0, 0, -3.6)
+				cylinder(
+					decor,
+					"ClockFace",
+					0.3,
+					5,
+					face * CFrame.Angles(math.rad(90), 0, 0),
+					Color3.fromRGB(250, 244, 226)
+				)
+				block(decor, "Hand", Vector3.new(0.3, 2, 0.2), face * CFrame.new(0, 0.8, -0.25), iron)
+				block(decor, "Hand", Vector3.new(1.6, 0.3, 0.2), face * CFrame.new(0.6, 0, -0.25), iron)
+			end
+		end
+	elseif biome.key == "Moonlit" then
+		local glowColors =
+			{ Color3.fromRGB(120, 220, 255), Color3.fromRGB(255, 130, 220), Color3.fromRGB(180, 140, 255) }
+		for _ = 1, 8 do
+			local p = freeSpot(25, 100, 12)
+			if p then
+				tree(
+					decor,
+					p,
+					rng.range(1, 1.4),
+					Color3.fromRGB(110, 80, 170):Lerp(Color3.fromRGB(70, 60, 140), rng.next())
+				)
+			end
+		end
+		-- Glowing mushrooms
+		for _ = 1, 12 do
+			local p = freeSpot(18, 102, 6)
+			if p then
+				local h = rng.range(1.5, 3.5)
+				local stem = cylinder(
+					decor,
+					"MushroomStem",
+					h,
+					0.8,
+					CFrame.new(p + Vector3.new(0, h / 2, 0)),
+					Color3.fromRGB(230, 226, 250)
+				)
+				noCollide(stem)
+				local color = glowColors[rng.int(1, #glowColors)]
+				local cap = ellipsoid(
+					decor,
+					"MushroomCap",
+					Vector3.new(h * 1.2, h * 0.5, h * 1.2),
+					CFrame.new(p + Vector3.new(0, h, 0)),
+					color,
+					Enum.Material.Neon
+				)
+				noCollide(cap)
+				if rng.next() < 0.4 then
+					local light = Instance.new("PointLight")
+					light.Color = color
+					light.Range = 10
+					light.Brightness = 1.2
+					light.Parent = cap
+				end
+			end
+		end
+		-- Crystal clusters
+		for _ = 1, 7 do
+			local p = freeSpot(25, 100, 8)
+			if p then
+				for _ = 1, 3 do
+					local h = rng.range(3, 7)
+					local crystal = block(
+						decor,
+						"Crystal",
+						Vector3.new(1.2, h, 1.2),
+						CFrame.new(p + Vector3.new(rng.range(-1.5, 1.5), h / 2 - 0.3, rng.range(-1.5, 1.5)))
+							* CFrame.Angles(rng.range(-0.35, 0.35), rng.range(0, 3), rng.range(-0.35, 0.35)),
+						Color3.fromRGB(200, 170, 255),
+						Enum.Material.Neon
+					)
+					crystal.Transparency = 0.2
+				end
+			end
+		end
+		-- Floating lanterns with fireflies
+		for _ = 1, 6 do
+			local p = freeSpot(20, 100, 10)
+			if p then
+				local lantern = ball(
+					decor,
+					"Lantern",
+					1.6,
+					CFrame.new(p + Vector3.new(0, rng.range(8, 14), 0)),
+					Color3.fromRGB(255, 220, 140),
+					Enum.Material.Neon
+				)
+				noCollide(lantern)
+				local light = Instance.new("PointLight")
+				light.Color = Color3.fromRGB(255, 220, 140)
+				light.Range = 14
+				light.Brightness = 1.4
+				light.Parent = lantern
+				local flies = Instance.new("ParticleEmitter")
+				flies.Name = "Fireflies"
+				flies.Color = ColorSequence.new(Color3.fromRGB(255, 240, 140))
+				flies.LightEmission = 1
+				flies.Rate = 3
+				flies.Lifetime = NumberRange.new(3, 5)
+				flies.Speed = NumberRange.new(0.5, 1.5)
+				flies.SpreadAngle = Vector2.new(180, 180)
+				flies.Size = NumberSequence.new(0.18)
+				flies.Parent = lantern
+			end
+		end
 	else -- Storm
 		local crystalColors =
 			{ Color3.fromRGB(110, 230, 255), Color3.fromRGB(170, 130, 255), Color3.fromRGB(120, 255, 220) }
@@ -878,11 +1114,89 @@ local function buildTraining(map: Instance)
 end
 
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- Leaderboards (the server fills in the rows)
+---------------------------------------------------------------------------
+local function boardFace(board: BasePart, face: Enum.NormalId, info: Config.BoardInfo)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = face.Name
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	gui.LightInfluence = 0
+	gui.Parent = board
+	Builders.text(
+		gui,
+		"Title",
+		info.title,
+		UDim2.fromScale(0.94, 0.12),
+		UDim2.fromScale(0.03, 0.02),
+		Color3.fromRGB(255, 214, 90),
+		Enum.Font.FredokaOne
+	)
+	for i = 1, 10 do
+		local color = if i <= 3 then Color3.fromRGB(255, 236, 170) else WHITE
+		local row = Builders.text(
+			gui,
+			"Row" .. i,
+			`{i}. ---`,
+			UDim2.fromScale(0.9, 0.068),
+			UDim2.fromScale(0.05, 0.15 + (i - 1) * 0.074),
+			color,
+			Enum.Font.GothamBold
+		)
+		row.TextXAlignment = Enum.TextXAlignment.Left
+	end
+	Builders.text(
+		gui,
+		"Status",
+		"Leaderboards appear once the game is published",
+		UDim2.fromScale(0.9, 0.05),
+		UDim2.fromScale(0.05, 0.92),
+		Color3.fromRGB(178, 186, 216),
+		Enum.Font.GothamBold
+	)
+end
+
+local function buildLeaderboards(hub: Instance)
+	local boards = folder(hub, "Leaderboards")
+	local list = Config.Leaderboards.boards
+	for i, info in list do
+		local base = CFrame.new((i - (#list + 1) / 2) * 30, 0.3, -72)
+		local m = newModel(boards, info.key)
+		m:SetAttribute("Stat", info.key)
+		block(
+			m,
+			"Base",
+			Vector3.new(17, 1.2, 4),
+			base * CFrame.new(0, 0.6, 0),
+			Color3.fromRGB(236, 232, 224),
+			Enum.Material.Marble
+		)
+		for _, side in { -1, 1 } do
+			block(
+				m,
+				"Post",
+				Vector3.new(1.2, 21, 1.2),
+				base * CFrame.new(side * 7.6, 11.7, 0),
+				Color3.fromRGB(120, 84, 58),
+				Enum.Material.Wood
+			)
+		end
+		local board =
+			block(m, "Board", Vector3.new(14.4, 18, 0.8), base * CFrame.new(0, 12.6, 0), Color3.fromRGB(34, 38, 66))
+		block(m, "Crown", Vector3.new(16.4, 1.4, 1.6), base * CFrame.new(0, 22.3, 0), Color3.fromRGB(255, 200, 70))
+		boardFace(board, Enum.NormalId.Front, info)
+		boardFace(board, Enum.NormalId.Back, info)
+	end
+end
+
 function MapBuilder.build(): Model
 	local map = Instance.new("Model")
 	map.Name = "Map"
 
 	buildHub(map)
+	buildLeaderboards(map:FindFirstChild("Hub") :: Instance)
 
 	local plots = folder(map, "Plots")
 	for i = 1, Config.Plots.count do

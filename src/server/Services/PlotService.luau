@@ -31,6 +31,8 @@ export type Plot = {
 	shieldActive: boolean,
 	shieldUntil: number,
 	shieldReadyAt: number,
+	rails: { BasePart },
+	signBoard: BasePart,
 }
 
 type ShieldCallback = (Plot) -> ()
@@ -95,6 +97,12 @@ local function loadPlots()
 				pedestalSpots[i] = part(pedestal, "Spot")
 			end
 			local shieldPad = part(model, "ShieldPad")
+			local rails: { BasePart } = {}
+			for _, piece in model:GetChildren() do
+				if piece:IsA("BasePart") and piece.Name == "Rail" then
+					table.insert(rails, piece)
+				end
+			end
 			local plot: Plot = {
 				index = index,
 				model = model,
@@ -114,6 +122,8 @@ local function loadPlots()
 				shieldActive = false,
 				shieldUntil = 0,
 				shieldReadyAt = 0,
+				rails = rails,
+				signBoard = part(model, "SignBoard"),
 			}
 			table.insert(plots, plot)
 		end
@@ -240,6 +250,37 @@ local function setShieldVisual(plot: Plot)
 	end
 end
 
+local function themeFor(key: string): Config.ThemeInfo?
+	for _, info in Config.Themes do
+		if info.key == key then
+			return info
+		end
+	end
+	return nil
+end
+
+-- Nest themes repaint the floor, fence and sign; nil restores the plot's own colours.
+local function paint(plot: Plot, themeKey: string?)
+	local theme = if themeKey then themeFor(themeKey) else nil
+	local trim = plot.color:Lerp(Color3.new(0, 0, 0), 0.25)
+	plot.floor.Color = if theme then theme.floor else plot.color
+	plot.floor.Material = if theme then theme.floorMaterial else Enum.Material.SmoothPlastic
+	for _, rail in plot.rails do
+		rail.Color = if theme then theme.rail else trim
+		rail.Material = if theme then theme.railMaterial else Enum.Material.SmoothPlastic
+	end
+	local signColor = if theme then theme.rail else trim
+	plot.signBoard.Color = signColor:Lerp(Color3.new(1, 1, 1), 0.2)
+end
+
+function PlotService.applyTheme(player: Player)
+	local plot = plotByPlayer[player]
+	local session = PlayerService.get(player)
+	if plot and session then
+		paint(plot, session.data.equippedTheme)
+	end
+end
+
 local function assign(session: Session)
 	for _, plot in plots do
 		if plot.owner == nil then
@@ -255,6 +296,7 @@ local function assign(session: Session)
 			plot.shieldReadyAt = 0
 			setShieldVisual(plot)
 			render(session)
+			paint(plot, session.data.equippedTheme)
 			local character = session.player.Character
 			if character then
 				task.spawn(teleportHome, session, character)
@@ -286,6 +328,7 @@ local function release(session: Session)
 	plot.shieldUntil = 0
 	plot.shieldReadyAt = 0
 	setShieldVisual(plot)
+	paint(plot, nil)
 end
 
 ---------------------------------------------------------------------------

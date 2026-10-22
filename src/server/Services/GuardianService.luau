@@ -9,6 +9,8 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local EggService = require(script.Parent.EggService)
+local EventState = require(script.Parent.EventState)
+local RewardService = require(script.Parent.RewardService)
 
 type Guardian = {
 	biome: Config.BiomeInfo,
@@ -57,6 +59,17 @@ end
 local function alert(player: Player?, kind: string, guardian: Guardian)
 	if player and player.Parent then
 		Remotes.Guardian:FireClient(player, kind, guardian.biome.guardian.name)
+	end
+end
+
+-- Losing the target counts as an escape only if they got away with the egg.
+local function escaped(guardian: Guardian, player: Player?)
+	alert(player, "escaped", guardian)
+	if player and EggService.isCarrying(player) then
+		local session = PlayerService.get(player)
+		if session then
+			RewardService.progress(session, "Escape", 1)
+		end
 	end
 end
 
@@ -146,7 +159,7 @@ local function step(guardian: Guardian, dt: number, t: number)
 	if guardian.state == "notice" then
 		local root = validTarget(guardian, guardian.target)
 		if not root then
-			alert(guardian.target, "escaped", guardian)
+			escaped(guardian, guardian.target)
 			guardian.target = nil
 			setState(guardian, "return")
 		else
@@ -162,11 +175,13 @@ local function step(guardian: Guardian, dt: number, t: number)
 		local target = guardian.target
 		local root = validTarget(guardian, target)
 		if not target or not root then
-			alert(target, "escaped", guardian)
+			escaped(guardian, target)
 			guardian.target = nil
 			setState(guardian, "return")
 		else
-			local speed = info.speed * (if EggService.isCarryingJackpot(target) then 1.1 else 1)
+			local speed = info.speed
+				* (if EggService.isCarryingJackpot(target) then 1.1 else 1)
+				* EventState.factor("guardianSpeed")
 			local distance = moveToward(guardian, root.Position, speed, dt)
 			moving = true
 			if distance <= info.catchRadius then

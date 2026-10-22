@@ -3,6 +3,7 @@
 
 local ContextActionService: ContextActionService = game:GetService("ContextActionService")
 local Players: Players = game:GetService("Players")
+local UserInputService: UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -108,6 +109,54 @@ local function watchContainer(container: Instance)
 	container.ChildAdded:Connect(hookTool)
 end
 
+-- A second jump in mid-air. JumpRequest repeats while the button is held, so only a fresh
+-- press (a gap since the last request) counts.
+local function setupDoubleJump()
+	local used = false
+	local lastRequest = 0
+	local function bind(character: Model)
+		local humanoid = character:WaitForChild("Humanoid", 10)
+		if not humanoid or not humanoid:IsA("Humanoid") then
+			return
+		end
+		used = false
+		humanoid.StateChanged:Connect(function(_, new)
+			if new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running then
+				used = false
+			end
+		end)
+	end
+	if player.Character then
+		task.spawn(bind, player.Character)
+	end
+	player.CharacterAdded:Connect(bind)
+
+	UserInputService.JumpRequest:Connect(function()
+		local now = os.clock()
+		local fresh = now - lastRequest > 0.15
+		lastRequest = now
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not fresh or used or not humanoid or not root or not root:IsA("BasePart") then
+			return
+		end
+		if
+			humanoid:GetState() ~= Enum.HumanoidStateType.Freefall
+			or humanoid.JumpHeight <= 0
+			or humanoid.PlatformStand
+		then
+			return
+		end
+		used = true
+		local velocity = math.sqrt(2 * workspace.Gravity * humanoid.JumpHeight * Config.DoubleJump.power)
+		local current = root.AssemblyLinearVelocity
+		root.AssemblyLinearVelocity = Vector3.new(current.X, velocity, current.Z)
+		humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		Sounds.play("dash", 1.5)
+	end)
+end
+
 function Input.start()
 	ContextActionService:BindAction("NestHeistDash", dash, true, Enum.KeyCode.Q, Enum.KeyCode.ButtonL1)
 	ContextActionService:SetTitle("NestHeistDash", "Dash")
@@ -123,6 +172,7 @@ function Input.start()
 		watchContainer(player.Character)
 	end
 	player.CharacterAdded:Connect(watchContainer)
+	setupDoubleJump()
 end
 
 return Input

@@ -269,6 +269,60 @@ Config.Biomes = {
 			accent = rgb(255, 222, 84),
 		},
 	}),
+	biome({
+		key = "Clockwork",
+		name = "Clockwork City",
+		icon = "⚙️",
+		order = 4,
+		recommendedSpeed = 60000,
+		angle = 20,
+		distance = 600,
+		groundColor = rgb(176, 150, 110),
+		groundMaterial = Enum.Material.DiamondPlate,
+		edgeColor = rgb(132, 104, 70),
+		rockColor = rgb(84, 76, 72),
+		bandColor = rgb(255, 186, 72),
+		nestColor = rgb(150, 112, 70),
+		respawnMin = 16,
+		respawnMax = 26,
+		jackpotWeight = 18,
+		guardian = {
+			name = "Cogwork Sentinel",
+			style = "Robot",
+			speed = 74,
+			catchRadius = 8.5,
+			noticeDelay = 0.55,
+			body = rgb(196, 150, 84),
+			accent = rgb(90, 230, 255),
+		},
+	}),
+	biome({
+		key = "Moonlit",
+		name = "Moonlit Grove",
+		icon = "🌙",
+		order = 5,
+		recommendedSpeed = 400000,
+		angle = 160,
+		distance = 560,
+		groundColor = rgb(70, 66, 130),
+		groundMaterial = Enum.Material.Grass,
+		edgeColor = rgb(52, 48, 104),
+		rockColor = rgb(44, 40, 70),
+		bandColor = rgb(190, 150, 255),
+		nestColor = rgb(98, 84, 130),
+		respawnMin = 18,
+		respawnMax = 30,
+		jackpotWeight = 12,
+		guardian = {
+			name = "Moonwing Owl",
+			style = "Owl",
+			speed = 92,
+			catchRadius = 9,
+			noticeDelay = 0.5,
+			body = rgb(92, 78, 150),
+			accent = rgb(255, 214, 110),
+		},
+	}),
 }
 
 Config.Training = {
@@ -457,6 +511,118 @@ Config.Pets = {
 		body = rgb(112, 62, 172),
 		accent = rgb(92, 242, 255),
 	},
+	-- Clockwork City
+	{
+		key = "CogMouse",
+		name = "Cog Mouse",
+		biome = "Clockwork",
+		rarity = "Common",
+		income = 16000,
+		shape = "critter",
+		variant = "mouse",
+		body = rgb(200, 160, 90),
+		accent = rgb(96, 98, 110),
+	},
+	{
+		key = "RivetRobin",
+		name = "Rivet Robin",
+		biome = "Clockwork",
+		rarity = "Uncommon",
+		income = 36000,
+		shape = "bird",
+		variant = "",
+		body = rgb(170, 180, 196),
+		accent = rgb(255, 120, 70),
+	},
+	{
+		key = "SpringBunny",
+		name = "Spring Bunny",
+		biome = "Clockwork",
+		rarity = "Rare",
+		income = 80000,
+		shape = "bunny",
+		variant = "",
+		body = rgb(214, 132, 82),
+		accent = rgb(255, 214, 140),
+	},
+	{
+		key = "SteamBear",
+		name = "Steam Bear",
+		biome = "Clockwork",
+		rarity = "Epic",
+		income = 180000,
+		shape = "critter",
+		variant = "bear",
+		body = rgb(150, 104, 62),
+		accent = rgb(110, 230, 255),
+	},
+	{
+		key = "ChronoDragon",
+		name = "Chrono Dragon",
+		biome = "Clockwork",
+		rarity = "Legendary",
+		income = 400000,
+		shape = "dragon",
+		variant = "",
+		body = rgb(222, 178, 70),
+		accent = rgb(70, 220, 210),
+	},
+	-- Moonlit Grove
+	{
+		key = "MothPuff",
+		name = "Moth Puff",
+		biome = "Moonlit",
+		rarity = "Common",
+		income = 320000,
+		shape = "blob",
+		variant = "",
+		body = rgb(214, 196, 255),
+		accent = rgb(255, 246, 200),
+	},
+	{
+		key = "StarSparrow",
+		name = "Star Sparrow",
+		biome = "Moonlit",
+		rarity = "Uncommon",
+		income = 720000,
+		shape = "bird",
+		variant = "",
+		body = rgb(52, 62, 130),
+		accent = rgb(255, 226, 92),
+	},
+	{
+		key = "LunarBunny",
+		name = "Lunar Bunny",
+		biome = "Moonlit",
+		rarity = "Rare",
+		income = 1600000,
+		shape = "bunny",
+		variant = "",
+		body = rgb(236, 236, 255),
+		accent = rgb(170, 140, 255),
+	},
+	{
+		key = "CometCat",
+		name = "Comet Cat",
+		biome = "Moonlit",
+		rarity = "Epic",
+		income = 3600000,
+		shape = "critter",
+		variant = "cat",
+		body = rgb(40, 44, 92),
+		accent = rgb(110, 200, 255),
+	},
+	{
+		key = "AuroraDragon",
+		name = "Aurora Dragon",
+		biome = "Moonlit",
+		rarity = "Legendary",
+		income = 8000000,
+		shape = "dragon",
+		variant = "",
+		body = rgb(80, 220, 190),
+		accent = rgb(255, 120, 220),
+	},
 } :: { PetInfo }
 
 Config.Sizes = {
@@ -492,6 +658,10 @@ Config.Shoes = {
 	{ name = "Nova Boots", mult = 128, cost = 1000000 },
 	{ name = "Galaxy Gliders", mult = 256, cost = 5000000 },
 	{ name = "Infinity Treads", mult = 512, cost = 25000000 },
+	{ name = "Warp Runners", mult = 1024, cost = 150000000 },
+	{ name = "Quantum Quicks", mult = 2048, cost = 800000000 },
+	{ name = "Celestial Soles", mult = 4096, cost = 4000000000 },
+	{ name = "Eternity Steps", mult = 8192, cost = 20000000000 },
 } :: { ShoeInfo }
 
 Config.Slots = {
@@ -583,6 +753,276 @@ Config.Dash = {
 Config.Data = {
 	storeName = "NestHeist_v1",
 	autosaveInterval = 90,
+}
+
+---------------------------------------------------------------------------
+-- Progression: rebirths, Index, fusion, friends
+---------------------------------------------------------------------------
+Config.Rebirth = {
+	baseCoins = 1000000,
+	coinsGrowth = 5,
+	baseSpeed = 5000,
+	speedGrowth = 3,
+	incomeBonus = 0.5, -- +50% income per rebirth
+	trainingBonus = 0.25, -- +25% training Speed per rebirth
+	feathers = 25,
+}
+
+Config.Index = {
+	biomeBonus = 0.1, -- +10% income for every biome whose five pets you've discovered
+}
+
+Config.Fusion = {
+	required = 3,
+}
+
+Config.Friends = {
+	bonusPerFriend = 0.1,
+	maxFriends = 3,
+}
+
+---------------------------------------------------------------------------
+-- Daily rewards, quests and codes
+---------------------------------------------------------------------------
+export type DailyReward = {
+	coinsSeconds: number?,
+	minCoins: number?,
+	feathers: number?,
+	boost: string?,
+	minutes: number?,
+}
+
+Config.Daily = {
+	cooldown = 20 * 60 * 60,
+	streakWindow = 48 * 60 * 60,
+	rewards = {
+		{ coinsSeconds = 120, minCoins = 250 },
+		{ feathers = 5 },
+		{ boost = "Luck", minutes = 10 },
+		{ coinsSeconds = 300, minCoins = 1000 },
+		{ feathers = 10 },
+		{ boost = "Turbo", minutes = 15 },
+		{ feathers = 25, coinsSeconds = 600, minCoins = 5000 },
+	} :: { DailyReward },
+}
+
+export type QuestInfo = {
+	id: string,
+	text: string,
+	one: string?,
+	min: number,
+	max: number,
+	feathers: number,
+	weight: number,
+	pvp: boolean,
+}
+
+Config.Quests = {
+	perDay = 3,
+	bonusFeathers = 15,
+	bonusLuckMinutes = 10,
+	pool = {
+		{ id = "Hatch", text = "Hatch %d eggs", min = 3, max = 6, feathers = 6, weight = 3, pvp = false },
+		{
+			id = "Laps",
+			text = "Run %d laps on the Training Track",
+			min = 2,
+			max = 4,
+			feathers = 5,
+			weight = 3,
+			pvp = false,
+		},
+		{
+			id = "RareHatch",
+			text = "Hatch %d Rare or better pets",
+			one = "Hatch a Rare or better pet",
+			min = 1,
+			max = 2,
+			feathers = 8,
+			weight = 2,
+			pvp = false,
+		},
+		{
+			id = "Escape",
+			text = "Escape a guardian with an egg %d times",
+			min = 2,
+			max = 4,
+			feathers = 6,
+			weight = 2,
+			pvp = false,
+		},
+		{
+			id = "Steal",
+			text = "Steal %d eggs from other players",
+			one = "Steal an egg from another player",
+			min = 1,
+			max = 2,
+			feathers = 10,
+			weight = 1,
+			pvp = true,
+		},
+		{
+			id = "Net",
+			text = "Net %d egg carriers",
+			one = "Net an egg carrier",
+			min = 1,
+			max = 2,
+			feathers = 8,
+			weight = 1,
+			pvp = true,
+		},
+		{
+			id = "Fuse",
+			text = "Fuse pets %d times",
+			one = "Fuse 3 pets into a stronger one",
+			min = 1,
+			max = 1,
+			feathers = 8,
+			weight = 1,
+			pvp = false,
+		},
+	} :: { QuestInfo },
+}
+
+export type CodeInfo = { feathers: number?, coins: number?, luckMinutes: number?, turboMinutes: number? }
+
+-- Add new codes here (upper case, no spaces). Players redeem each code once.
+Config.Codes = {
+	NESTHEIST = { feathers = 20 },
+	HATCHLING = { coins = 2500 },
+	LUCKYEGG = { luckMinutes = 15 },
+	ZOOMZOOM = { turboMinutes = 15 },
+} :: { [string]: CodeInfo }
+
+---------------------------------------------------------------------------
+-- Server events, nest themes, leaderboards, followers
+---------------------------------------------------------------------------
+export type EventInfo = {
+	key: string,
+	name: string,
+	icon: string,
+	desc: string,
+	duration: number,
+	effects: { [string]: number },
+}
+
+-- Effects: luck, income, training, eggLuck (rarer nest eggs), respawn (delay factor), guardianSpeed.
+Config.Events = {
+	firstDelay = 150,
+	interval = 420,
+	list = {
+		{
+			key = "LuckyHour",
+			name = "Lucky Hour",
+			icon = "🍀",
+			desc = "Hatch luck x2 for everyone!",
+			duration = 120,
+			effects = { luck = 2 },
+		},
+		{
+			key = "CoinRush",
+			name = "Coin Rush",
+			icon = "💰",
+			desc = "Every pet earns x2 coins!",
+			duration = 120,
+			effects = { income = 2 },
+		},
+		{
+			key = "SpeedFrenzy",
+			name = "Speed Frenzy",
+			icon = "⚡",
+			desc = "Training gives x2 Speed!",
+			duration = 120,
+			effects = { training = 2 },
+		},
+		{
+			key = "EggShower",
+			name = "Egg Shower",
+			icon = "🥚",
+			desc = "Nests refill super fast with rarer eggs!",
+			duration = 90,
+			effects = { eggLuck = 2.5, respawn = 0.15 },
+		},
+		{
+			key = "SleepyGuardians",
+			name = "Sleepy Guardians",
+			icon = "😴",
+			desc = "Guardians are 25% slower!",
+			duration = 120,
+			effects = { guardianSpeed = 0.75 },
+		},
+	} :: { EventInfo },
+}
+
+export type ThemeInfo = {
+	key: string,
+	name: string,
+	cost: number,
+	floor: Color3,
+	floorMaterial: Enum.Material,
+	rail: Color3,
+	railMaterial: Enum.Material,
+}
+
+Config.Themes = {
+	{
+		key = "Meadow",
+		name = "Meadow Lawn",
+		cost = 25,
+		floor = rgb(110, 196, 92),
+		floorMaterial = Enum.Material.Grass,
+		rail = rgb(140, 100, 66),
+		railMaterial = Enum.Material.Wood,
+	},
+	{
+		key = "Candy",
+		name = "Candy Swirl",
+		cost = 35,
+		floor = rgb(255, 196, 226),
+		floorMaterial = Enum.Material.SmoothPlastic,
+		rail = rgb(255, 92, 150),
+		railMaterial = Enum.Material.SmoothPlastic,
+	},
+	{
+		key = "Midnight",
+		name = "Midnight Glow",
+		cost = 50,
+		floor = rgb(36, 40, 74),
+		floorMaterial = Enum.Material.Slate,
+		rail = rgb(110, 200, 255),
+		railMaterial = Enum.Material.Neon,
+	},
+	{
+		key = "Royal",
+		name = "Royal Gold",
+		cost = 80,
+		floor = rgb(250, 238, 210),
+		floorMaterial = Enum.Material.Marble,
+		rail = rgb(255, 200, 60),
+		railMaterial = Enum.Material.Foil,
+	},
+} :: { ThemeInfo }
+
+export type BoardInfo = { key: string, title: string, ascending: boolean, format: string }
+
+Config.Leaderboards = {
+	refreshInterval = 150,
+	boards = {
+		{ key = "Rebirths", title = "♻️ Most Rebirths", ascending = false, format = "count" },
+		{ key = "Hatched", title = "🐣 Top Hatchers", ascending = false, format = "count" },
+		{ key = "Stolen", title = "🦝 Master Thieves", ascending = false, format = "count" },
+		{ key = "BestLap", title = "🏁 Fastest Laps", ascending = true, format = "time" },
+	} :: { BoardInfo },
+}
+
+Config.Follower = {
+	scale = 0.7,
+	back = 3.6,
+	side = 3,
+}
+
+Config.DoubleJump = {
+	power = 0.9, -- fraction of a normal jump
 }
 
 ---------------------------------------------------------------------------

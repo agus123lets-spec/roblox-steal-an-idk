@@ -5,11 +5,15 @@
 local Players: Players = game:GetService("Players")
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService: RunService = game:GetService("RunService")
+local TweenService: TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Builders = require(ReplicatedStorage.Shared.Builders)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Sounds = require(script.Parent.Sounds)
+local ClientState = require(script.Parent.ClientState)
+local PetLogic = require(ReplicatedStorage.Shared.PetLogic)
+local Format = require(ReplicatedStorage.Shared.Format)
 
 local player = Players.LocalPlayer
 
@@ -280,6 +284,13 @@ local function onFX(kind: any, a: any, b: any)
 		if root and (root.Position - a).Magnitude < 40 then
 			Sounds.play("deposit")
 		end
+	elseif kind == "Rebirth" and typeof(a) == "Vector3" then
+		burst(a + Vector3.new(0, 2, 0), Color3.fromRGB(255, 214, 90), 60)
+		burst(a + Vector3.new(0, 3, 0), Color3.fromRGB(200, 140, 255), 40)
+		local root = rootOf(player.Character)
+		if root and (root.Position - a).Magnitude < 80 then
+			Sounds.play("hatch", 1.15)
+		end
 	elseif kind == "Slime" and typeof(a) == "Vector3" then
 		burst(a + Vector3.new(0, 1, 0), Color3.fromRGB(140, 255, 90), 20)
 		local root = rootOf(player.Character)
@@ -405,6 +416,159 @@ function World.start()
 				else
 					applyRevengeVisuals()
 				end
+			end
+			task.wait(0.5)
+		end
+	end)
+	-- New players get a glowing trail to Meadow Hollow (and then to the nearest egg there).
+	local carryingNow = false
+	Remotes.Carry.OnClientEvent:Connect(function(state: any)
+		carryingNow = state == "start"
+	end)
+	local guidePart = Instance.new("Part")
+	guidePart.Name = "GuideTarget"
+	guidePart.Anchored = true
+	guidePart.CanCollide = false
+	guidePart.CanQuery = false
+	guidePart.CanTouch = false
+	guidePart.Transparency = 1
+	guidePart.Size = Vector3.one
+	guidePart.Parent = fxFolder
+	local guideTo = Instance.new("Attachment")
+	guideTo.Parent = guidePart
+	local guideBeam: Beam? = nil
+
+	local function guideTarget(root: BasePart): Vector3?
+		local meadow = Config.Biomes[1]
+		local offset = Vector3.new(root.Position.X - meadow.center.X, 0, root.Position.Z - meadow.center.Z)
+		if offset.Magnitude > meadow.radius then
+			return meadow.center + Vector3.new(0, 3, 0)
+		end
+		local eggs = workspace:FindFirstChild("Eggs")
+		local best: Vector3? = nil
+		local bestDistance = math.huge
+		for _, egg in (if eggs then eggs:GetChildren() else {}) do
+			if egg:IsA("Model") then
+				local p = egg:GetPivot().Position
+				local fromCenter = Vector3.new(p.X - meadow.center.X, 0, p.Z - meadow.center.Z)
+				local distance = (p - root.Position).Magnitude
+				if fromCenter.Magnitude < meadow.radius and distance < bestDistance then
+					best = p
+					bestDistance = distance
+				end
+			end
+		end
+		return best
+	end
+
+	local function updateGuide()
+		local state = ClientState.get()
+		local root = rootOf(player.Character)
+		local wanted = ClientState.hasData() and #state.pets == 0 and state.stats.hatched == 0 and not carryingNow
+		local target = if wanted and root then guideTarget(root) else nil
+		if not root or not target then
+			if guideBeam then
+				guideBeam:Destroy()
+				guideBeam = nil
+			end
+			return
+		end
+		guidePart.CFrame = CFrame.new(target)
+		if not guideBeam or guideBeam.Parent ~= root then
+			if guideBeam then
+				guideBeam:Destroy()
+			end
+			local from = root:FindFirstChild("GuideFrom")
+			if not from then
+				local created = Instance.new("Attachment")
+				created.Name = "GuideFrom"
+				created.Parent = root
+				from = created
+			end
+			local trail = Instance.new("Beam")
+			trail.Attachment0 = from :: Attachment
+			trail.Attachment1 = guideTo
+			trail.Color = ColorSequence.new(Color3.fromRGB(255, 236, 120), Color3.fromRGB(120, 255, 140))
+			trail.Transparency = NumberSequence.new(0.2, 0.5)
+			trail.Width0 = 1
+			trail.Width1 = 2
+			trail.FaceCamera = true
+			trail.LightEmission = 1
+			trail.Segments = 20
+			trail.Parent = root
+			guideBeam = trail
+		end
+	end
+
+	-- "+$" pops over your pets so income feels alive.
+	local function coinFloaters()
+		local plot = myPlot()
+		local pets = plot and plot:FindFirstChild("Pets")
+		local camera = workspace.CurrentCamera
+		if not pets or not camera then
+			return
+		end
+		local state = ClientState.get()
+		local byId: { [string]: PetLogic.PetData } = {}
+		for _, pet in state.pets do
+			byId[pet.id] = pet
+		end
+		local candidates = {}
+		for _, model in pets:GetChildren() do
+			if
+				model:IsA("Model")
+				and model.PrimaryPart
+				and (model:GetPivot().Position - camera.CFrame.Position).Magnitude < 90
+			then
+				table.insert(candidates, model)
+			end
+		end
+		for _ = 1, math.min(3, #candidates) do
+			local model = table.remove(candidates, math.random(1, #candidates))
+			local petId = model and model:GetAttribute("PetId")
+			local pet = if type(petId) == "string" then byId[petId] else nil
+			local root = model and model.PrimaryPart
+			if pet and root then
+				local amount = PetLogic.income(pet) * state.incomeMult * 3
+				local gui = Builders.billboard(root, Vector3.new(0, 4, 0), UDim2.fromOffset(120, 34), 90)
+				gui.Name = "CoinPop"
+				local label = Builders.text(
+					gui,
+					"Text",
+					`+{Format.money(amount)}`,
+					UDim2.fromScale(1, 1),
+					UDim2.new(),
+					Color3.fromRGB(255, 220, 90),
+					Enum.Font.FredokaOne
+				)
+				TweenService:Create(
+					gui,
+					TweenInfo.new(1.2, Enum.EasingStyle.Quad),
+					{ StudsOffsetWorldSpace = Vector3.new(0, 7, 0) }
+				):Play()
+				TweenService:Create(label, TweenInfo.new(1.2), { TextTransparency = 1, TextStrokeTransparency = 1 })
+					:Play()
+				task.delay(1.25, function()
+					gui:Destroy()
+				end)
+			end
+		end
+	end
+
+	task.spawn(function()
+		local floaterTimer = 0
+		while true do
+			local ok, err = pcall(function(): string?
+				updateGuide()
+				floaterTimer += 1
+				if floaterTimer >= 6 then
+					floaterTimer = 0
+					coinFloaters()
+				end
+				return nil
+			end)
+			if not ok then
+				warn("[NestHeist] World effects error:", err)
 			end
 			task.wait(0.5)
 		end

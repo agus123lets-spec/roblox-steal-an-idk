@@ -25,7 +25,7 @@ end
 ---------------------------------------------------------------------------
 -- Config sanity
 ---------------------------------------------------------------------------
-eq("15 pets", #Config.Pets, 15)
+eq("25 pets", #Config.Pets, 25)
 for _, biome in Config.Biomes do
 	for _, rarity in Config.RarityOrder do
 		local count = 0
@@ -301,6 +301,222 @@ for _, descendant in map:GetDescendants() do
 	end
 end
 eq("every map part is anchored", unanchored, 0)
+
+---------------------------------------------------------------------------
+-- World layout for the new islands
+---------------------------------------------------------------------------
+local T = Config.Training
+for i, a in Config.Biomes do
+	local fromHub = math.sqrt(a.center.X ^ 2 + a.center.Z ^ 2)
+	check(`{a.key} island clear of the hub`, fromHub - a.radius > Config.Hub.radius + 20, fromHub)
+	for j, b in Config.Biomes do
+		if j > i then
+			local d = (a.center - b.center).Magnitude
+			check(`{a.key} and {b.key} islands apart`, d > a.radius + b.radius + 20, d)
+		end
+	end
+	local nearestX = math.clamp(a.center.X, T.center.X - T.outerX / 2 - 5, T.center.X + T.outerX / 2 + 5)
+	local nearestZ = math.clamp(a.center.Z, T.center.Z - T.outerZ / 2 - 5, T.center.Z + T.outerZ / 2 + 5)
+	local gap = math.sqrt((a.center.X - nearestX) ^ 2 + (a.center.Z - nearestZ) ^ 2)
+	check(`{a.key} island clear of the training track`, gap > a.radius + 10, gap)
+
+	-- Its bridge must not cut through another island or the training track.
+	local from = Config.polar(a.angle, Config.Hub.radius)
+	local to = Config.polar(a.angle, a.distance - a.radius)
+	local along = to - from
+	for _, b in Config.Biomes do
+		if b ~= a then
+			local t = math.clamp((b.center - from):Dot(along) / along:Dot(along), 0, 1)
+			local closest = from + along * t
+			check(`{a.key} bridge clear of {b.key}`, (b.center - closest).Magnitude > b.radius + 12)
+		end
+	end
+	for step = 0, 40 do
+		local p = from + along * (step / 40)
+		local insideTrack = math.abs(p.X - T.center.X) < T.outerX / 2 + 16
+			and math.abs(p.Z - T.center.Z) < T.outerZ / 2 + 16
+		check(`{a.key} bridge clear of the training track`, not insideTrack)
+	end
+end
+local pathAngles = { 0 }
+for _, biome in Config.Biomes do
+	table.insert(pathAngles, biome.angle)
+end
+for _, child in map.Hub:GetChildren() do
+	if child.Name == "Tree" then
+		local p = child:FindFirstChild("Trunk").CFrame.Position
+		for _, angle in pathAngles do
+			local dir = Config.polar(angle, 1)
+			local forward = p.X * dir.X + p.Z * dir.Z
+			local side = math.abs(p.X * dir.Z - p.Z * dir.X)
+			check(`hub tree clear of the {angle} degree path`, forward < 0 or side > 17, side)
+		end
+	end
+end
+local boards = map.Hub:FindFirstChild("Leaderboards")
+eq("leaderboards built", if boards then #boards:GetChildren() else 0, #Config.Leaderboards.boards)
+for _, info in Config.Leaderboards.boards do
+	local board = boards:FindFirstChild(info.key):FindFirstChild("Board")
+	for _, faceName in { "Front", "Back" } do
+		local gui = board:FindFirstChild(faceName)
+		check(`{info.key} {faceName} face`, gui ~= nil and gui.ClassName == "SurfaceGui")
+		for i = 1, 10 do
+			check(`{info.key} {faceName} row {i}`, gui:FindFirstChild("Row" .. i) ~= nil)
+		end
+		check(`{info.key} {faceName} status`, gui:FindFirstChild("Status") ~= nil)
+	end
+end
+
+---------------------------------------------------------------------------
+-- Progression
+---------------------------------------------------------------------------
+local Progression = Loader.load("Progression")
+
+local c0, s0 = Progression.rebirthRequirement(0)
+local c1, s1 = Progression.rebirthRequirement(1)
+eq("first rebirth coins", c0, Config.Rebirth.baseCoins)
+eq("first rebirth Speed", s0, Config.Rebirth.baseSpeed)
+check("rebirths get harder", c1 > c0 and s1 > s0)
+check("first rebirth needs Storm Peaks Speed", s0 >= Config.BiomeByKey.Storm.recommendedSpeed)
+eq("rebirth income multiplier", Progression.rebirthIncomeMultiplier(2), 1 + 2 * Config.Rebirth.incomeBonus)
+eq("rebirth training multiplier", Progression.rebirthTrainingMultiplier(4), 1 + 4 * Config.Rebirth.trainingBonus)
+
+local index: { [string]: boolean } = {}
+eq("no biomes complete", Progression.completedBiomes(index), 0)
+for _, info in Config.Pets do
+	if info.biome == "Meadow" then
+		index[info.key] = true
+	end
+end
+check("Meadow complete", Progression.biomeComplete(index, "Meadow"))
+check("Candy not complete", not Progression.biomeComplete(index, "Candy"))
+eq("one biome complete", Progression.completedBiomes(index), 1)
+eq("five pets discovered", Progression.discovered(index), 5)
+eq("Index bonus", Progression.incomeMultiplier(0, index, 0), 1 + Config.Index.biomeBonus)
+eq(
+	"friend bonus is capped",
+	Progression.friendMultiplier(10),
+	1 + Config.Friends.bonusPerFriend * Config.Friends.maxFriends
+)
+local stacked = (1 + 2 * Config.Rebirth.incomeBonus)
+	* (1 + Config.Index.biomeBonus)
+	* (1 + Config.Friends.bonusPerFriend)
+check("income boosts stack", math.abs(Progression.incomeMultiplier(2, index, 1) - stacked) < 1e-9)
+
+local function makePet(id: string, kind: string, size: string, mutation: string?)
+	return { id = id, kind = kind, size = size, mutation = mutation }
+end
+local pets = {
+	makePet("a", "PebbleBun", "Huge"),
+	makePet("b", "PebbleBun", "Normal"),
+	makePet("c", "PebbleBun", "Tiny", "Glitter"),
+	makePet("d", "PebbleBun", "Normal"),
+	makePet("e", "CloverChick", "Normal"),
+}
+local selection = Progression.fuseSelection(pets, "PebbleBun")
+check("fusion uses three pets", selection ~= nil and #selection == 3)
+local used = {}
+for _, p in selection or {} do
+	used[p.id] = true
+end
+check("fusion keeps your best copy", not used.a and used.b and used.c and used.d)
+local fusedKind, fusedSize, fusedMutation = Progression.fuseResult(selection)
+eq("fusion makes the next rarity", fusedKind, "CloverChick")
+eq("fusion keeps the best size", fusedSize, "Normal")
+eq("fusion keeps the best mutation", fusedMutation, "Glitter")
+check("fusion needs three of a kind", Progression.fuseSelection(pets, "CloverChick") == nil)
+local lionKind, lionSize = Progression.fuseResult({
+	makePet("x", "SunpetalLion", "Big"),
+	makePet("y", "SunpetalLion", "Normal"),
+	makePet("z", "SunpetalLion", "Normal"),
+})
+eq("legendary fusion keeps the pet", lionKind, "SunpetalLion")
+eq("legendary fusion grows a size", lionSize, "Huge")
+local titanKind = Progression.fuseResult({
+	makePet("x", "SunpetalLion", "Titanic"),
+	makePet("y", "SunpetalLion", "Normal"),
+	makePet("z", "SunpetalLion", "Normal"),
+})
+eq("titanic legendaries can't fuse", titanKind, nil)
+for _, info in Config.Pets do
+	if Config.Rarities[info.rarity].order < #Config.RarityOrder then
+		local resultKind = Progression.fuseResult({
+			makePet("1", info.key, "Normal"),
+			makePet("2", info.key, "Normal"),
+			makePet("3", info.key, "Normal"),
+		})
+		local result = if resultKind then Config.PetByKey[resultKind] else nil
+		check(
+			`{info.key} fuses into the next rarity of its biome`,
+			result ~= nil
+				and result.biome == info.biome
+				and Config.Rarities[result.rarity].order == Config.Rarities[info.rarity].order + 1
+		)
+	end
+end
+
+check("first daily claim", Progression.canClaimDaily(0, 1000))
+check("daily cooldown", not Progression.canClaimDaily(1000, 1000 + Config.Daily.cooldown - 1))
+check("daily ready again", Progression.canClaimDaily(1000, 1000 + Config.Daily.cooldown))
+eq("streak continues", Progression.nextStreak(1000, 3, 1000 + Config.Daily.cooldown + 60), 4)
+eq("streak resets after the window", Progression.nextStreak(1000, 3, 1000 + Config.Daily.streakWindow + 1), 1)
+eq("first streak", Progression.nextStreak(0, 0, 5000), 1)
+check("daily rewards repeat weekly", Progression.dailyReward(#Config.Daily.rewards + 1) == Progression.dailyReward(1))
+eq("daily coins have a minimum", Progression.dailyCoins(Config.Daily.rewards[1], 0), Config.Daily.rewards[1].minCoins)
+eq(
+	"daily coins scale with income",
+	Progression.dailyCoins(Config.Daily.rewards[1], 1000),
+	1000 * Config.Daily.rewards[1].coinsSeconds
+)
+eq("feather days pay no coins", Progression.dailyCoins(Config.Daily.rewards[2], 1000), 0)
+
+for _, userId in { 1, 42, 123456789, 9876543210 } do
+	for day = 20000, 20013 do
+		local quests = Progression.generateQuests(userId, day)
+		eq(`{Config.Quests.perDay} quests for {userId}/{day}`, #quests, Config.Quests.perDay)
+		local seen, pvp = {}, 0
+		for _, quest in quests do
+			local info = Progression.questInfo(quest.id)
+			check(`quest {quest.id} is known`, info ~= nil)
+			check(`quest {quest.id} appears once`, not seen[quest.id])
+			seen[quest.id] = true
+			if info then
+				pvp += if info.pvp then 1 else 0
+				check(`quest {quest.id} target in range`, quest.target >= info.min and quest.target <= info.max)
+			end
+			check(`quest {quest.id} pays feathers`, quest.feathers > 0 and quest.progress == 0 and not quest.claimed)
+			check(`quest {quest.id} has text`, #Progression.questText(quest.id, quest.target) > 8)
+		end
+		check(`at most one PvP quest for {userId}/{day}`, pvp <= 1)
+		local again = Progression.generateQuests(userId, day)
+		check(
+			`quests are stable for {userId}/{day}`,
+			again[1].id == quests[1].id and again[3].target == quests[3].target
+		)
+	end
+end
+eq("quest day", Progression.questDay(86400 * 3 + 5), 3)
+eq("singular quest text", Progression.questText("Steal", 1), "Steal an egg from another player")
+eq("plural quest text", Progression.questText("Hatch", 4), "Hatch 4 eggs")
+
+eq("codes are normalised", Progression.normalizeCode(" nest heist "), "NESTHEIST")
+for code in Config.Codes do
+	eq(`code {code} is stored normalised`, Progression.normalizeCode(code), code)
+end
+for _, theme in Config.Themes do
+	check(`theme {theme.key} costs feathers`, theme.cost > 0 and theme.key ~= "Classic")
+end
+local knownEffects =
+	{ luck = true, income = true, training = true, eggLuck = true, respawn = true, guardianSpeed = true }
+for _, event in Config.Events.list do
+	check(`event {event.key} ends before the next one`, event.duration < Config.Events.interval)
+	for effect in event.effects do
+		check(`event {event.key} effect {effect} is wired up`, knownEffects[effect] == true)
+	end
+end
+eq("Format.duration hours", Format.duration(3725), "1h 2m")
+eq("Format.duration minutes", Format.duration(125), "2m 5s")
+eq("Format.duration seconds", Format.duration(9), "9s")
 
 print(`logic.spec: {passes} passed, {failures} failed`)
 if failures > 0 then

@@ -9,6 +9,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local ToolService = require(script.Parent.ToolService)
+local PlotService = require(script.Parent.PlotService)
 
 type Session = PlayerService.Session
 
@@ -61,6 +62,15 @@ function ShopService.applyTrail(player: Player)
 	trail.Parent = root
 end
 
+local function themeInfo(key: string): Config.ThemeInfo?
+	for _, info in Config.Themes do
+		if info.key == key then
+			return info
+		end
+	end
+	return nil
+end
+
 local function buy(session: Session, itemId: string): (boolean, string)
 	local data = session.data
 	local now = PlayerService.now()
@@ -111,6 +121,28 @@ local function buy(session: Session, itemId: string): (boolean, string)
 			end
 			return true, `✨ {item.name} activated!`
 		end
+	end
+
+	local themeKey = string.match(itemId, "^Theme:(.+)$")
+	if themeKey then
+		if themeKey == "Classic" then
+			data.equippedTheme = ""
+			PlotService.applyTheme(session.player)
+			return true, "🏡 Classic nest restored."
+		end
+		local info = themeInfo(themeKey)
+		if not info then
+			return false, "Unknown theme."
+		end
+		if not data.themes[themeKey] then
+			if not PlayerService.trySpendFeathers(session, info.cost) then
+				return false, `You need {info.cost} 🪶 feathers for {info.name}.`
+			end
+			data.themes[themeKey] = true
+		end
+		data.equippedTheme = themeKey
+		PlotService.applyTheme(session.player)
+		return true, `🏡 {info.name} applied to your nest!`
 	end
 
 	local trailKey = string.match(itemId, "^Trail:(.+)$")

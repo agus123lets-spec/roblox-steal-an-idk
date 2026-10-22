@@ -21,6 +21,7 @@ local EVENTS = {
 local FUNCTIONS = {
 	"Purchase", -- client -> server: (itemId) -> (ok, message)
 	"SellPet", -- client -> server: (petId) -> (ok, message)
+	"Action", -- client -> server: (action, arg) -> (ok, message): rewards, rebirth, fusion, codes
 }
 
 local isServer = RunService:IsServer()
@@ -85,4 +86,5 @@ return {
 	UseTool = event("UseTool"),
 	Purchase = func("Purchase"),
 	SellPet = func("SellPet"),
+	Action = func("Action"),
 }

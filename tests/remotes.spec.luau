@@ -50,7 +50,7 @@ for name, kind in string.gmatch(remotes, '\n%s*(%w+) = (%a+)%("') do
 	end
 end
 check("found the remote events", events == 12)
-check("found the remote functions", functions == 2)
+check("found the remote functions", functions == 3)
 
 print(`remotes.spec: {passes} passed, {failures} failed`)
 if failures > 0 then

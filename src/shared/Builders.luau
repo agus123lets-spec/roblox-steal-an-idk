@@ -570,6 +570,84 @@ function Builders.guardian(info: Config.GuardianInfo, base: CFrame): Model
 		C("Stick", 3, 0.4, 0, 14.8, -0.3, WHITE)
 		C("Lollipop", 0.5, 3.2, 0, 16.9, -0.3, accent, CFrame.Angles(math.rad(90), 0, 0))
 		C("LollipopSwirl", 0.55, 1.8, 0, 16.9, -0.3, Color3.fromRGB(120, 220, 255), CFrame.Angles(math.rad(90), 0, 0))
+	elseif info.style == "Robot" then
+		height = 19
+		local function box(
+			name: string,
+			size: Vector3,
+			x: number,
+			y: number,
+			z: number,
+			color: Color3,
+			material: Enum.Material?,
+			rotation: CFrame?
+		): Part
+			local part =
+				Builders.block(model, name, size, at(x, y, z, rotation), color, material or Enum.Material.Metal)
+			Builders.noCollide(part)
+			return part
+		end
+		for _, side in { -1, 1 } do
+			C("Leg", 4.2, 2, side * 2.3, 2.6, 0, dark)
+			box("Foot", Vector3.new(2.8, 1.2, 4), side * 2.3, 0.6, -0.5, dark)
+			box("Knee", Vector3.new(2.4, 1, 2.4), side * 2.3, 4.6, 0, accent, Enum.Material.Neon)
+		end
+		box("Hips", Vector3.new(6.4, 1.6, 4), 0, 5.6, 0, dark)
+		box("Torso", Vector3.new(8, 6.6, 5.2), 0, 9.6, 0, body)
+		box("Panel", Vector3.new(5, 3.6, 0.4), 0, 9.8, -2.7, light)
+		C("ChestGear", 0.6, 3, 0, 9.8, -3.05, accent, CFrame.Angles(math.rad(90), 0, 0))
+		for i = 1, 8 do
+			local a = i / 8 * math.pi * 2
+			box(
+				"Tooth",
+				Vector3.new(0.6, 0.8, 0.6),
+				math.cos(a) * 1.7,
+				9.8 + math.sin(a) * 1.7,
+				-3.05,
+				accent,
+				nil,
+				CFrame.Angles(0, 0, a)
+			)
+		end
+		box("Neck", Vector3.new(2, 1, 2), 0, 13.4, 0, dark)
+		box("Head", Vector3.new(5.4, 3.8, 4.4), 0, 15.6, -0.2, body)
+		box("Visor", Vector3.new(4.6, 1.4, 0.3), 0, 15.8, -2.5, Color3.fromRGB(24, 26, 36), Enum.Material.SmoothPlastic)
+		for _, side in { -1, 1 } do
+			box("Eye", Vector3.new(1.1, 0.8, 0.2), side * 1.15, 15.8, -2.7, accent, Enum.Material.Neon)
+			B("Rivet", 0.8, side * 2.8, 15.6, -0.2, dark)
+			B("Shoulder", 2.8, side * 4.9, 11.8, 0, dark)
+			C("Arm", 5, 1.5, side * 5.3, 8.8, 0, body, CFrame.Angles(0, 0, side * 0.12))
+			box("Claw", Vector3.new(1.4, 1.8, 2.2), side * 5.7, 5.8, 0, dark)
+		end
+		C("Antenna", 2.4, 0.35, 0, 18.6, -0.2, dark)
+		B("AntennaTip", 1, 0, 19.9, -0.2, accent, Enum.Material.Neon)
+		C("WindKey", 2.6, 0.6, 0, 10, 3.6, light, CFrame.Angles(math.rad(90), 0, 0))
+		for _, side in { -1, 1 } do
+			box("KeyWing", Vector3.new(2.2, 1.6, 0.5), side * 1.3, 10, 5, light)
+		end
+	elseif info.style == "Owl" then
+		height = 18
+		local talon = Color3.fromRGB(255, 190, 80)
+		E("Body", Vector3.new(8.4, 10, 7.6), 0, 6.2, 0.4, body)
+		E("Belly", Vector3.new(5.8, 7.2, 1.6), 0, 5.6, -3.1, light)
+		for row = 0, 2 do
+			for column = -1, 1 do
+				E("Feather", Vector3.new(1, 0.5, 0.3), column * 1.4, 7.4 - row * 1.6, -3.95, dark)
+			end
+		end
+		E("Head", Vector3.new(7.6, 6.4, 6.8), 0, 12.8, -0.2, body)
+		E("Face", Vector3.new(6.4, 4.8, 1.4), 0, 12.6, -3.3, light)
+		for _, side in { -1, 1 } do
+			B("EyeRing", 2.9, side * 1.6, 13, -3.75, accent)
+			B("Eye", 1.6, side * 1.6, 13, -4.55, EYE_COLOR)
+			B("Shine", 0.5, side * 1.85, 13.45, -5.2, WHITE)
+			E("Tuft", Vector3.new(1.3, 3.2, 1.3), side * 2.7, 16.4, -0.4, dark, CFrame.Angles(0, 0, side * -0.35))
+			E("Wing", Vector3.new(1.8, 8, 5.8), side * 4.4, 6.8, 0.6, dark, CFrame.Angles(0, 0, side * 0.12))
+			E("Talon", Vector3.new(1.8, 0.9, 2.4), side * 1.7, 0.45, -1.2, talon)
+		end
+		E("Beak", Vector3.new(1.1, 1.5, 1.3), 0, 11.8, -4.25, talon)
+		E("Tail", Vector3.new(4.4, 1.1, 3.4), 0, 2.2, 4.1, dark, CFrame.Angles(math.rad(25), 0, 0))
+		B("MoonGem", 1.3, 0, 9.2, -3.85, accent, Enum.Material.Neon)
 	else -- Ram
 		height = 11
 		E("Body", Vector3.new(7.6, 6.6, 10), 0, 5.4, 0.6, body)

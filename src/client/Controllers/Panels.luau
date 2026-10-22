@@ -1,30 +1,53 @@
 --!strict
--- Shop (upgrades, tools, feather shop) and Pets (sell, slots) windows.
+-- Menu windows. The pages (Shop, Pets, Rewards, Index, Rebirth) live in Controllers/Pages;
+-- this module owns the window, tabs, menu badges and the calls to the server.
 
 local ReplicatedStorage: ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local Format = require(ReplicatedStorage.Shared.Format)
-local PetLogic = require(ReplicatedStorage.Shared.PetLogic)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local UIKit = require(script.Parent.UIKit)
 local ClientState = require(script.Parent.ClientState)
 local HUD = require(script.Parent.HUD)
 local Sounds = require(script.Parent.Sounds)
+local Types = require(script.Parent.Pages.Types)
+local ShopPage = require(script.Parent.Pages.ShopPage)
+local PetsPage = require(script.Parent.Pages.PetsPage)
+local RewardsPage = require(script.Parent.Pages.RewardsPage)
+local IndexPage = require(script.Parent.Pages.IndexPage)
+local RebirthPage = require(script.Parent.Pages.RebirthPage)
 
 local C = UIKit.Colors
 
+type Entry = { name: string, icon: string, color: Color3, page: Types.Page }
+
 local Panels = {}
 
-local gui: ScreenGui
+local MENU: { Entry } = {
+	{ name = "Shop", icon = "🛒", color = C.info, page = ShopPage },
+	{ name = "Pets", icon = "🐾", color = C.good, page = PetsPage },
+	{ name = "Rewards", icon = "🎁", color = C.feathers, page = RewardsPage },
+	{ name = "Index", icon = "📖", color = C.warn, page = IndexPage },
+	{ name = "Rebirth", icon = "♻️", color = C.rare, page = RebirthPage },
+}
+
 local window: Frame
 local titleLabel: TextLabel
 local tabsBar: Frame
 local content: ScrollingFrame
-local current: string? = nil
-local shopTab = "Upgrades"
-local pendingSell: { [string]: number } = {}
+local ui: Types.UI
+local current: Entry? = nil
+local tabs: { [string]: string } = {}
+local tabButtons: { [string]: TextButton } = {}
+local badges: { [string]: Frame } = {}
+local lastSignature = ""
+local rowOrder = 0
 local busy = false
+local pendingUntil: { [string]: number } = {}
+
+local function nextOrder(): number
+	rowOrder += 1
+	return rowOrder
+end
 
 local function clearContent()
 	for _, child in content:GetChildren() do
@@ -34,7 +57,6 @@ local function clearContent()
 	end
 end
 
-local rowOrder = 0
 local function row(
 	title: string,
 	subtitle: string,
@@ -43,20 +65,20 @@ local function row(
 	buttonColor: Color3?,
 	onClick: (() -> ())?
 ): Frame
-	rowOrder += 1
 	local frame = UIKit.frame(content, "Row", UDim2.new(1, -8, 0, 64), UDim2.new(), C.row, 0)
-	frame.LayoutOrder = rowOrder
+	frame.LayoutOrder = nextOrder()
 	UIKit.corner(frame)
 	UIKit.stroke(frame, C.stroke, 2)
+	local width = if buttonText then -170 else -24
 	local titleText =
-		UIKit.label(frame, "Title", title, UDim2.new(1, -170, 0, 28), UDim2.fromOffset(12, 6), titleColor or C.text)
+		UIKit.label(frame, "Title", title, UDim2.new(1, width, 0, 28), UDim2.fromOffset(12, 6), titleColor or C.text)
 	titleText.TextXAlignment = Enum.TextXAlignment.Left
 	UIKit.textStroke(titleText, 1.5)
 	local sub = UIKit.label(
 		frame,
 		"Subtitle",
 		subtitle,
-		UDim2.new(1, -170, 0, 20),
+		UDim2.new(1, width, 0, 20),
 		UDim2.fromOffset(12, 36),
 		C.muted,
 		UIKit.BodyFont
@@ -82,273 +104,131 @@ local function row(
 	return frame
 end
 
-local function note(text: string)
-	rowOrder += 1
+local function note(text: string): TextLabel
 	local label = UIKit.label(content, "Note", text, UDim2.new(1, -8, 0, 34), UDim2.new(), C.muted, UIKit.BodyFont)
-	label.LayoutOrder = rowOrder
+	label.LayoutOrder = nextOrder()
+	return label
 end
 
-local function purchase(itemId: string)
+local function header(text: string, color: Color3?): TextLabel
+	local label = UIKit.label(content, "Header", text, UDim2.new(1, -8, 0, 32), UDim2.new(), color or C.text)
+	label.LayoutOrder = nextOrder()
+	UIKit.textStroke(label, 2)
+	return label
+end
+
+local function run(call: () -> (any, any))
 	if busy then
 		return
 	end
 	busy = true
 	task.spawn(function()
-		local ok, result, message = pcall(function()
-			return Remotes.Purchase:InvokeServer(itemId)
-		end)
+		local ok, result, message = pcall(call)
 		busy = false
 		if ok then
 			HUD.toast(tostring(message), if result then "success" else "warn")
 			Sounds.play(if result then "coin" else "error")
 		else
-			HUD.toast("Purchase failed, try again.", "warn")
+			HUD.toast("That didn't work, try again.", "warn")
 		end
 	end)
 end
 
-local function sell(petId: string)
-	if busy then
-		return
-	end
-	busy = true
-	task.spawn(function()
-		local ok, result, message = pcall(function()
-			return Remotes.SellPet:InvokeServer(petId)
-		end)
-		busy = false
-		if ok then
-			HUD.toast(tostring(message), if result then "success" else "warn")
-			Sounds.play(if result then "coin" else "error")
-		end
-	end)
+local function pending(key: string): boolean
+	return (pendingUntil[key] or 0) > os.clock()
 end
 
----------------------------------------------------------------------------
--- Shop
----------------------------------------------------------------------------
-local function renderShop(state: ClientState.State)
-	local now = workspace:GetServerTimeNow()
-	if shopTab == "Upgrades" then
-		local shoes = Config.Shoes[state.shoesLevel]
-		local nextShoes = Config.Shoes[state.shoesLevel + 1]
-		if nextShoes then
-			local affordable = state.coins >= nextShoes.cost
-			row(
-				`👟 {shoes.name} (x{shoes.mult})`,
-				`Next: {nextShoes.name} - x{nextShoes.mult} Speed from training`,
-				C.speed,
-				Format.money(nextShoes.cost),
-				if affordable then C.button else C.buttonDisabled,
-				function()
-					purchase("Shoes")
-				end
-			)
-		else
-			row(`👟 {shoes.name} (x{shoes.mult})`, "Best shoes in the game!", C.speed, "MAX", C.buttonDisabled, nil)
-		end
-		local slotCost = PetLogic.slotCost(state.slots)
-		if slotCost then
-			row(
-				`🐾 Pen Slots {state.slots}/{Config.Plots.maxSlots}`,
-				"Room for one more earning pet",
-				C.coins,
-				Format.money(slotCost),
-				if state.coins >= slotCost then C.button else C.buttonDisabled,
-				function()
-					purchase("Slot")
-				end
-			)
-		else
-			row(
-				`🐾 Pen Slots {state.slots}/{Config.Plots.maxSlots}`,
-				"Your pen is maxed out!",
-				C.coins,
-				"MAX",
-				C.buttonDisabled,
-				nil
-			)
-		end
-		note("Tip: faster laps on the Training Track give up to x1.6 bonus Speed.")
-	elseif shopTab == "Tools" then
-		row("🕸 Net Launcher", "Knock the egg off a carrier, then grab it", C.good, "OWNED", C.buttonDisabled, nil)
-		if state.tools.Slime then
-			row("🟢 Slime Puddle", "Slows egg carriers that run through it", C.good, "OWNED", C.buttonDisabled, nil)
-		else
-			local cost = Config.Tools.Slime.cost
-			row(
-				"🟢 Slime Puddle",
-				"Slows egg carriers that run through it",
-				C.good,
-				Format.money(cost),
-				if state.coins >= cost then C.button else C.buttonDisabled,
-				function()
-					purchase("Tool:Slime")
-				end
-			)
-		end
-		note("Tools only work on players carrying an egg. Nobody gets bullied for walking around.")
-	else
-		note(`You have {state.feathers} 🪶. Earn them when your eggs get stolen, from underdog heists and revenge.`)
-		for _, item in Config.FeatherShop do
-			local untilTime = if item.id == "Boost:Luck" then state.luckUntil else state.turboUntil
-			local active = if untilTime > now then ` • active {Format.clock(untilTime - now)}` else ""
-			row(
-				`✨ {item.name}`,
-				item.desc .. active,
-				C.feathers,
-				`{item.cost} 🪶`,
-				if state.feathers >= item.cost then C.button else C.buttonDisabled,
-				function()
-					purchase(item.id)
-				end
-			)
-		end
-		for _, trail in Config.Trails do
-			local owned = state.trails[trail.key] == true
-			local equipped = state.equippedTrail == trail.key
-			local buttonText = if equipped then "UNEQUIP" elseif owned then "EQUIP" else `{trail.cost} 🪶`
-			local color = if owned or state.feathers >= trail.cost then C.button else C.buttonDisabled
-			row(
-				`🌈 {trail.name}`,
-				if equipped then "Equipped" else "A glowing trail behind you",
-				trail.c1,
-				buttonText,
-				color,
-				function()
-					purchase("Trail:" .. trail.key)
-				end
-			)
-		end
+local function confirm(key: string): boolean
+	if pending(key) then
+		pendingUntil[key] = nil
+		return true
 	end
-end
-
----------------------------------------------------------------------------
--- Pets
----------------------------------------------------------------------------
-local function renderPets(state: ClientState.State)
-	local slotCost = PetLogic.slotCost(state.slots)
-	row(
-		`🐾 {#state.pets}/{state.slots} pets • {Format.money(state.income)}/s`,
-		if slotCost then "Buy another slot to earn more" else "Pen maxed out",
-		C.coins,
-		if slotCost then `+1 slot {Format.money(slotCost)}` else "MAX",
-		if slotCost and state.coins >= slotCost then C.button else C.buttonDisabled,
-		if slotCost
-			then function()
-				purchase("Slot")
-			end
-			else nil
-	)
-	if #state.pets == 0 then
-		note("No pets yet! Grab an egg in 🌼 Meadow Hollow and bring it home.")
-		return
-	end
-	local pets = table.clone(state.pets)
-	table.sort(pets, function(a, b)
-		return PetLogic.income(a) > PetLogic.income(b)
+	pendingUntil[key] = os.clock() + 3
+	Panels.refresh(true)
+	task.delay(3.1, function()
+		Panels.refresh(true)
 	end)
-	local now = os.clock()
-	for _, pet in pets do
-		local info = Config.PetByKey[pet.kind]
-		if info then
-			local rarity = Config.Rarities[info.rarity]
-			local biome = Config.BiomeByKey[info.biome]
-			local confirming = (pendingSell[pet.id] or 0) > now
-			local value = PetLogic.sellValue(pet)
-			row(
-				PetLogic.describe(pet),
-				`{info.rarity} • {if biome then biome.name else ""} • {Format.money(PetLogic.income(pet))}/s`,
-				rarity.color,
-				if confirming then "Sure? Sell!" else `Sell {Format.money(value)}`,
-				if confirming then C.danger else C.warn,
-				function()
-					if (pendingSell[pet.id] or 0) > os.clock() then
-						pendingSell[pet.id] = nil
-						sell(pet.id)
-					else
-						pendingSell[pet.id] = os.clock() + 3
-						Panels.refresh()
-						task.delay(3.1, Panels.refresh)
-					end
-				end
-			)
-		end
-	end
+	return false
 end
 
 ---------------------------------------------------------------------------
 -- Window
 ---------------------------------------------------------------------------
-local tabButtons: { [string]: TextButton } = {}
-local lastSignature = ""
-
-local function sortedKeys(map: { [string]: boolean }): string
-	local keys = {}
-	for key in map do
-		table.insert(keys, key)
+local function buildTabs(entry: Entry)
+	for _, child in tabsBar:GetChildren() do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
 	end
-	table.sort(keys)
-	return table.concat(keys, ",")
-end
-
--- Everything the open window shows. Coins change every second, so only affordability is included;
--- rebuilding rows on every coin tick would eat clicks.
-local function viewSignature(state: ClientState.State): string
-	local nextShoes = Config.Shoes[state.shoesLevel + 1]
-	local slotCost = PetLogic.slotCost(state.slots)
-	local petIds = {}
-	for _, pet in state.pets do
-		table.insert(petIds, pet.id)
-	end
-	local parts = {
-		current or "",
-		shopTab,
-		tostring(state.shoesLevel),
-		tostring(state.slots),
-		tostring(state.feathers),
-		state.equippedTrail,
-		tostring(nextShoes ~= nil and state.coins >= nextShoes.cost),
-		tostring(slotCost ~= nil and state.coins >= slotCost),
-		tostring(state.coins >= Config.Tools.Slime.cost),
-		sortedKeys(state.tools),
-		sortedKeys(state.trails),
-		table.concat(petIds, ","),
-	}
-	if current == "Shop" and shopTab == "Feathers" then
-		-- Boost timers are shown here; refresh them every few seconds.
-		table.insert(parts, tostring(math.floor(workspace:GetServerTimeNow() / 5)))
-	end
-	return table.concat(parts, "|")
-end
-
-function Panels.refresh()
-	if not current then
+	table.clear(tabButtons)
+	local list = entry.page.tabs
+	if not list then
 		return
 	end
-	lastSignature = viewSignature(ClientState.get())
-	clearContent()
-	rowOrder = 0
-	local state = ClientState.get()
-	tabsBar.Visible = current == "Shop"
-	content.Position = UDim2.fromOffset(16, if current == "Shop" then 112 else 66)
-	content.Size = UDim2.new(1, -32, 1, if current == "Shop" then -128 else -82)
-	for name, button in tabButtons do
-		button.BackgroundColor3 = if name == shopTab then C.info else C.panelLight
-	end
-	if current == "Shop" then
-		titleLabel.Text = "🛒 Shop"
-		renderShop(state)
-	else
-		titleLabel.Text = "🐾 Your Pets"
-		renderPets(state)
+	local width = math.floor((588 - 8 * (#list - 1)) / #list)
+	for i, name in list do
+		local button = UIKit.button(
+			tabsBar,
+			name,
+			name,
+			UDim2.fromOffset(math.min(width, 180), 38),
+			UDim2.new(),
+			C.panelLight,
+			function()
+				Sounds.play("click")
+				tabs[entry.name] = name
+				Panels.refresh(true)
+			end
+		)
+		button.LayoutOrder = i
+		tabButtons[name] = button
 	end
 end
 
-local function open(name: string)
-	current = name
+function Panels.refresh(force: boolean?)
+	local entry = current
+	if not entry then
+		return
+	end
+	local page = entry.page
+	local state = ClientState.get()
+	local tab = tabs[entry.name] or (if page.tabs then page.tabs[1] else "")
+	tabs[entry.name] = tab
+	local signature = `{entry.name}|{tab}|{page.signature(state, tab)}`
+	if not force and signature == lastSignature then
+		return
+	end
+	lastSignature = signature
+	local scroll = content.CanvasPosition
+	clearContent()
+	rowOrder = 0
+	local hasTabs = page.tabs ~= nil
+	tabsBar.Visible = hasTabs
+	content.Position = UDim2.fromOffset(16, if hasTabs then 112 else 66)
+	content.Size = UDim2.new(1, -32, 1, if hasTabs then -128 else -82)
+	for name, button in tabButtons do
+		button.BackgroundColor3 = if name == tab then C.info else C.panelLight
+	end
+	titleLabel.Text = page.title
+	local ok, err = pcall(function(): string?
+		page.render(ui, state, tab)
+		return nil
+	end)
+	if not ok then
+		warn(`[NestHeist] {entry.name} page error: {err}`)
+	end
+	-- Keep the scroll position when rows rebuild (after the canvas has grown).
+	task.defer(function()
+		content.CanvasPosition = scroll
+	end)
+end
+
+local function open(entry: Entry)
+	current = entry
 	window.Visible = true
-	Panels.refresh()
+	buildTabs(entry)
+	content.CanvasPosition = Vector2.zero
+	Panels.refresh(true)
 	UIKit.pop(titleLabel, 0.15)
 end
 
@@ -358,15 +238,48 @@ local function close()
 end
 
 function Panels.toggle(name: string)
-	if current == name then
+	if current and current.name == name then
 		close()
-	else
-		open(name)
+		return
+	end
+	for _, entry in MENU do
+		if entry.name == name then
+			open(entry)
+		end
+	end
+end
+
+local function makeBadge(button: TextButton): Frame
+	local badge = UIKit.frame(button, "Badge", UDim2.fromOffset(24, 24), UDim2.new(1, -14, 0, -8), C.danger)
+	badge.ZIndex = 5
+	UIKit.corner(badge, UDim.new(1, 0))
+	UIKit.stroke(badge, C.stroke, 2)
+	local mark = UIKit.label(badge, "Mark", "!", UDim2.fromScale(1, 1), UDim2.new(), C.text)
+	mark.ZIndex = 6
+	badge.Visible = false
+	return badge
+end
+
+local function updateBadges()
+	local state = ClientState.get()
+	local ready = ClientState.hasData()
+	for _, entry in MENU do
+		local badge = badges[entry.name]
+		local check = entry.page.badge
+		if badge and check then
+			local visible = ready and check(state)
+			if badge.Visible ~= visible then
+				badge.Visible = visible
+				if visible then
+					UIKit.pop(badge, 0.4)
+				end
+			end
+		end
 	end
 end
 
 function Panels.start()
-	gui = HUD.makeScreen("NestHeistPanels", 5)
+	local gui = HUD.makeScreen("NestHeistPanels", 5)
 
 	window = UIKit.frame(gui, "Window", UDim2.fromOffset(620, 470), UDim2.fromScale(0.5, 0.52), C.panel, 0.02)
 	window.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -376,7 +289,7 @@ function Panels.start()
 	UIKit.stroke(window, C.stroke, 4)
 	HUD.responsive(window)
 
-	titleLabel = UIKit.label(window, "Title", "Shop", UDim2.new(1, -120, 0, 40), UDim2.fromOffset(20, 12), C.text)
+	titleLabel = UIKit.label(window, "Title", "", UDim2.new(1, -120, 0, 40), UDim2.fromOffset(20, 12), C.text)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	UIKit.textStroke(titleLabel, 2.5)
 	UIKit.button(window, "Close", "X", UDim2.fromOffset(44, 44), UDim2.new(1, -58, 0, 12), C.danger, function()
@@ -386,23 +299,6 @@ function Panels.start()
 
 	tabsBar = UIKit.frame(window, "Tabs", UDim2.new(1, -32, 0, 40), UDim2.fromOffset(16, 62), C.panel, 1)
 	UIKit.list(tabsBar, Enum.FillDirection.Horizontal, 8)
-	for i, name in { "Upgrades", "Tools", "Feathers" } do
-		local button = UIKit.button(
-			tabsBar,
-			name,
-			name,
-			UDim2.fromOffset(160, 38),
-			UDim2.new(),
-			C.panelLight,
-			function()
-				Sounds.play("click")
-				shopTab = name
-				Panels.refresh()
-			end
-		)
-		button.LayoutOrder = i
-		tabButtons[name] = button
-	end
 
 	content = Instance.new("ScrollingFrame")
 	content.Name = "Content"
@@ -416,18 +312,49 @@ function Panels.start()
 	local layout = UIKit.list(content, Enum.FillDirection.Vertical, 8)
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
-	HUD.addMenuButton("🛒", "Shop", C.info, 1, function()
-		Sounds.play("click")
-		Panels.toggle("Shop")
-	end)
-	HUD.addMenuButton("🐾", "Pets", C.good, 2, function()
-		Sounds.play("click")
-		Panels.toggle("Pets")
-	end)
+	ui = {
+		content = content,
+		row = row,
+		note = note,
+		header = header,
+		order = nextOrder,
+		purchase = function(itemId: string)
+			run(function()
+				return Remotes.Purchase:InvokeServer(itemId)
+			end)
+		end,
+		sell = function(petId: string)
+			run(function()
+				return Remotes.SellPet:InvokeServer(petId)
+			end)
+		end,
+		action = function(name: string, arg: any)
+			run(function()
+				return Remotes.Action:InvokeServer(name, arg)
+			end)
+		end,
+		confirm = confirm,
+		pending = pending,
+	}
 
-	ClientState.onChanged(function(state)
-		if current and viewSignature(state) ~= lastSignature then
+	for i, entry in MENU do
+		local button = HUD.addMenuButton(entry.icon, entry.name, entry.color, i, function()
+			Sounds.play("click")
+			Panels.toggle(entry.name)
+		end)
+		badges[entry.name] = makeBadge(button)
+	end
+
+	ClientState.onChanged(function()
+		Panels.refresh()
+		updateBadges()
+	end)
+	-- Countdowns (daily reward, boosts) change without a state push.
+	task.spawn(function()
+		while true do
+			task.wait(1)
 			Panels.refresh()
+			updateBadges()
 		end
 	end)
 end

@@ -9,6 +9,7 @@ local UserInputService: UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local UIKit = require(script.Parent.UIKit)
 local ClientState = require(script.Parent.ClientState)
@@ -117,6 +118,13 @@ local function refreshStats(state: ClientState.State)
 	if state.speed ~= lastSpeed then
 		if lastSpeed >= 0 and state.speed > lastSpeed then
 			UIKit.pop(speedValue)
+			for _, biome in Config.Biomes do
+				local needed = biome.recommendedSpeed
+				if needed > 0 and lastSpeed < needed and state.speed >= needed then
+					HUD.announce(`🔓 {biome.icon} {biome.name} unlocked! You can outrun its guardian now.`, "success")
+					Sounds.play("jackpot", 1.2)
+				end
+			end
 		end
 		lastSpeed = state.speed
 		speedValue.Text = Format.short(state.speed)
@@ -137,14 +145,15 @@ end
 local menu: Frame
 
 local function buildMenu()
-	menu = UIKit.frame(gui, "Menu", UDim2.fromOffset(96, 190), UDim2.new(0, 12, 0.5, 0), C.panel, 1)
+	menu = UIKit.frame(gui, "Menu", UDim2.fromOffset(96, 0), UDim2.new(0, 12, 0.46, 0), C.panel, 1)
+	menu.AutomaticSize = Enum.AutomaticSize.Y
 	anchored(menu, 0, 0.5)
 	HUD.responsive(menu)
-	UIKit.list(menu, Enum.FillDirection.Vertical, 10)
+	UIKit.list(menu, Enum.FillDirection.Vertical, 8)
 end
 
 function HUD.addMenuButton(icon: string, text: string, color: Color3, order: number, onClick: () -> ()): TextButton
-	local button = UIKit.button(menu, text, `{icon}\n{text}`, UDim2.fromOffset(92, 80), UDim2.new(), color, onClick)
+	local button = UIKit.button(menu, text, `{icon}\n{text}`, UDim2.fromOffset(90, 62), UDim2.new(), color, onClick)
 	button.LayoutOrder = order
 	return button
 end
@@ -487,14 +496,18 @@ local function objectiveText(state: ClientState.State): string
 		return "🥚 Cross a bridge to 🌼 Meadow Hollow and hold E on an egg"
 	end
 	if #state.pets >= state.slots then
-		return "🐾 Pen full! Sell weak pets or buy slots (Pets menu)"
+		return "🐾 Pen full! Fuse, sell or add slots in the 🐾 Pets menu"
+	end
+	local coinsNeeded, speedNeeded = Progression.rebirthRequirement(state.rebirths)
+	if state.coins >= coinsNeeded and state.speed >= speedNeeded then
+		return "♻️ You can Rebirth! Open ♻️ Rebirth for a permanent boost"
 	end
 	for _, biome in Config.Biomes do
 		if state.speed < biome.recommendedSpeed then
 			return `⚡ Train to {Format.short(biome.recommendedSpeed)} Speed for {biome.icon} {biome.name} (laps or Jog Pad)`
 		end
 	end
-	return "⭐ Hunt Jackpot Eggs and rare mutations!"
+	return "⭐ Fill your 📖 Index, hunt Jackpot Eggs and rare mutations!"
 end
 
 local function slowUpdate()
@@ -512,6 +525,19 @@ local function slowUpdate()
 	end
 	if state.turboUntil > now then
 		table.insert(boosts, `👟 Turbo x2 {Format.clock(state.turboUntil - now)}`)
+	end
+	local eventKey = workspace:GetAttribute("EventKey")
+	local eventEnds = workspace:GetAttribute("EventEndsAt")
+	if type(eventKey) == "string" and type(eventEnds) == "number" and eventEnds > now then
+		for _, info in Config.Events.list do
+			if info.key == eventKey then
+				table.insert(boosts, 1, `{info.icon} {info.name} {Format.clock(eventEnds - now)}`)
+			end
+		end
+	end
+	if state.friendCount > 0 then
+		local bonus = math.floor((Progression.friendMultiplier(state.friendCount) - 1) * 100 + 0.5)
+		table.insert(boosts, `👥 Friends +{bonus}%`)
 	end
 	boostsLabel.Text = table.concat(boosts, "    ")
 

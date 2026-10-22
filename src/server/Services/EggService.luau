@@ -13,6 +13,8 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PlayerService = require(script.Parent.PlayerService)
 local PlotService = require(script.Parent.PlotService)
 local Loop = require(script.Parent.Loop)
+local EventState = require(script.Parent.EventState)
+local RewardService = require(script.Parent.RewardService)
 
 type Session = PlayerService.Session
 type Plot = PlotService.Plot
@@ -471,6 +473,7 @@ local function deposit(egg: Egg, session: Session, plot: Plot, index: number)
 	incubate(egg, session.player, plot, index, duration)
 	if stolen then
 		session.data.stats.stolen += 1
+		RewardService.progress(session, "Steal", 1)
 		PlayerService.notify(
 			session.player,
 			`Heist complete! The {egg.rarity} egg hatches in {math.ceil(duration)}s.`,
@@ -502,6 +505,11 @@ local function hatch(egg: Egg, session: Session, silent: boolean)
 		return
 	end
 	session.data.stats.hatched += 1
+	RewardService.progress(session, "Hatch", 1)
+	local hatchedInfo = Config.PetByKey[kind]
+	if hatchedInfo and Config.Rarities[hatchedInfo.rarity].order >= 3 then
+		RewardService.progress(session, "RareHatch", 1)
+	end
 	if silent then
 		return
 	end
@@ -555,7 +563,8 @@ function EggService.onPromptTriggered(egg: Egg, player: Player)
 		if nest and nest.egg == egg then
 			nest.egg = nil
 			local biome = Config.BiomeByKey[nest.biome]
-			nest.respawnAt = now() + biome.respawnMin + roll() * (biome.respawnMax - biome.respawnMin)
+			nest.respawnAt = now()
+				+ (biome.respawnMin + roll() * (biome.respawnMax - biome.respawnMin)) * EventState.factor("respawn")
 		end
 		attachTo(egg, session)
 		if egg.jackpot then
@@ -768,7 +777,7 @@ local function respawnTick()
 	local t = now()
 	for _, nest in nests do
 		if nest.egg == nil and t >= nest.respawnAt then
-			spawnInNest(nest, PetLogic.rollEggRarity(roll, 1), false)
+			spawnInNest(nest, PetLogic.rollEggRarity(roll, EventState.factor("eggLuck")), false)
 		end
 	end
 end
@@ -812,6 +821,16 @@ local function onSessionEnding(session: Session)
 		end
 		if other.lastHolder == player then
 			other.lastHolder = nil
+		end
+	end
+end
+
+-- Egg Shower: every empty nest refills right away.
+function EggService.refillNests()
+	local t = now()
+	for _, nest in nests do
+		if nest.egg == nil then
+			nest.respawnAt = t
 		end
 	end
 end

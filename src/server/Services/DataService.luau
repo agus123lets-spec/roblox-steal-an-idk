@@ -9,6 +9,7 @@ local RunService: RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local PetLogic = require(ReplicatedStorage.Shared.PetLogic)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 
 export type Stats = { hatched: number, stolen: number, caught: number, laps: number, bestLap: number }
 export type SaveData = {
@@ -25,6 +26,12 @@ export type SaveData = {
 	index: { [string]: boolean },
 	stats: Stats,
 	lastOnline: number,
+	rebirths: number,
+	themes: { [string]: boolean },
+	equippedTheme: string,
+	codes: { [string]: boolean },
+	daily: { last: number, streak: number },
+	quests: { day: number, list: { Progression.Quest }, bonusClaimed: boolean },
 }
 
 local DataService = {}
@@ -85,6 +92,12 @@ function DataService.defaultData(): SaveData
 		index = {},
 		stats = { hatched = 0, stolen = 0, caught = 0, laps = 0, bestLap = 0 },
 		lastOnline = 0,
+		rebirths = 0,
+		themes = {},
+		equippedTheme = "",
+		codes = {},
+		daily = { last = 0, streak = 0 },
+		quests = { day = -1, list = {}, bonusClaimed = false },
 	}
 end
 
@@ -132,6 +145,35 @@ function DataService.reconcile(raw: any): SaveData
 		data.stats.bestLap = math.max(0, num(raw.stats.bestLap, 0))
 	end
 	data.lastOnline = num(raw.lastOnline, 0)
+	data.rebirths = math.max(0, math.floor(num(raw.rebirths, 0)))
+	data.themes = boolMap(raw.themes)
+	if type(raw.equippedTheme) == "string" and data.themes[raw.equippedTheme] then
+		data.equippedTheme = raw.equippedTheme
+	end
+	data.codes = boolMap(raw.codes)
+	if type(raw.daily) == "table" then
+		data.daily.last = math.max(0, num(raw.daily.last, 0))
+		data.daily.streak = math.max(0, math.floor(num(raw.daily.streak, 0)))
+	end
+	if type(raw.quests) == "table" and type(raw.quests.list) == "table" then
+		local list: { Progression.Quest } = {}
+		for _, quest in raw.quests.list do
+			if type(quest) == "table" and type(quest.id) == "string" and Progression.questInfo(quest.id) then
+				table.insert(list, {
+					id = quest.id,
+					target = math.max(1, math.floor(num(quest.target, 1))),
+					progress = math.max(0, math.floor(num(quest.progress, 0))),
+					claimed = quest.claimed == true,
+					feathers = math.max(0, math.floor(num(quest.feathers, 0))),
+				})
+			end
+		end
+		data.quests = {
+			day = math.floor(num(raw.quests.day, -1)),
+			list = list,
+			bonusClaimed = raw.quests.bonusClaimed == true,
+		}
+	end
 	return data
 end
 
