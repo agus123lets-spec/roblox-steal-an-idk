@@ -14,7 +14,8 @@ type Follower = { key: string, model: Model?, position: Vector3?, look: Vector3,
 
 local Followers = {}
 
-local HIDDEN = CFrame.new(0, -500, 0)
+-- Parked far above the map while hidden (at -500 and below the engine deletes parts).
+local HIDDEN = CFrame.new(0, 4000, 0)
 
 local folder: Folder
 local followers: { [Player]: Follower } = {}

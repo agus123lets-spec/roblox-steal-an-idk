@@ -69,8 +69,11 @@ local Page: Types.Page = {
 			for _, kind in kinds do
 				local info = Config.PetByKey[kind]
 				local selection = Progression.fuseSelection(state.pets, kind)
-				local resultKind, size, mutation =
-					if selection then Progression.fuseResult(selection) else nil, "Normal", nil
+				-- An if-expression keeps only the first return value, so assign all three explicitly.
+				local resultKind: string?, size, mutation: string? = nil, "Normal", nil
+				if selection then
+					resultKind, size, mutation = Progression.fuseResult(selection)
+				end
 				if info and resultKind then
 					local preview: PetLogic.PetData = { id = "", kind = resultKind, size = size, mutation = mutation }
 					local resultInfo = Config.PetByKey[resultKind]
