@@ -65,6 +65,25 @@
   button.secondary { background: #5a6274; box-shadow: 0 3px 0 #383d4a; }
   button.download { display: block; width: calc(100% - 8px); margin: 10px 4px 0; font-size: 15px; font-weight: 700; background: #2f7fd1; box-shadow: 0 3px 0 #1c4f85; }
   #panel p.hint { margin: 6px 0 0; font-size: 12px; opacity: .6; }
+  button:disabled { opacity: .55; cursor: default; filter: none; }
+  button.small { font-size: 12px; padding: 4px 10px; margin: 0 0 0 6px; box-shadow: 0 2px 0 #383d4a; }
+  button.online { display: block; width: calc(100% - 8px); margin: 8px 4px 0; font-weight: 700; background: #3d8a4f; box-shadow: 0 3px 0 #22512d; }
+  #mp { margin-top: 6px; text-align: left; }
+  .mprow { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
+  .mprow input:not([type=checkbox]), .mprow select { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2); background: rgba(0,0,0,.35); color: #fff; user-select: text; }
+  .mprow button { margin: 0; white-space: nowrap; }
+  .mprow .chk { font-size: 13px; white-space: nowrap; }
+  .mph { margin: 12px 0 4px; font-size: 14px; color: #ffcf5a; }
+  #mpRooms { max-height: 190px; overflow: auto; }
+  .room { display: flex; align-items: center; gap: 10px; padding: 6px 8px; margin: 4px 0; background: rgba(255,255,255,.05); border-radius: 6px; font-size: 13px; }
+  .room b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .room span { opacity: .7; }
+  .room button { margin: 0; padding: 5px 12px; font-size: 13px; }
+  .roombar { padding: 8px 10px; background: rgba(61,138,79,.18); border: 1px solid rgba(61,138,79,.5); border-radius: 8px; font-size: 13px; }
+  .roombar #mpRoomInfo { flex: 1; opacity: .8; }
+  .roombar b { color: #ffcf5a; letter-spacing: 2px; }
+  #panel.lobby > #tabs, #panel.lobby > #cards, #panel.lobby > #detail, #panel.lobby > table.ctl, #panel.lobby > p.hint, #panel.lobby > #play,
+  #panel.lobby > #restart, #panel.lobby > #download, #panel.lobby > #sub { display: none !important; }
   #nogl { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; text-align: center; padding: 20px; }
 </style>
 </head>
@@ -114,13 +133,34 @@
     <button id="play">Deploy</button>
     <button id="restart" class="secondary" style="display:none">New battle</button>
     <button id="download" class="download" title="Save steelfront.html to your computer">&#11015; Download game (play offline)</button>
-    <p class="hint">Saves this single HTML file. Open it in any browser, no internet needed.</p>
+    <p class="hint" id="dlHint">Saves this single HTML file. Open it in any browser, no internet needed.</p>
+    <div id="mp">
+      <button id="mpOpen" class="online">&#127760; Online rooms</button>
+      <div id="mpLobby" style="display:none">
+        <p class="hint" style="margin:0 0 8px">Play with friends over the internet. Bots fill the empty seats, and a bot takes your seat back when you leave.</p>
+        <div class="mprow"><input id="mpName" maxlength="16" placeholder="Your name" autocomplete="nickname"><input id="mpServer" placeholder="Server address"><button id="mpConnect" class="secondary">Connect</button></div>
+        <div class="mprow"><select id="mpTeam" title="Team"><option value="auto">Team: balance automatically</option><option value="0">Team Olive (south base)</option><option value="1">Team Sand (north base)</option></select></div>
+        <h3 class="mph">Public rooms <button id="mpRefresh" class="secondary small">Refresh</button></h3>
+        <div id="mpRooms"><p class="hint">Not connected yet.</p></div>
+        <div class="mprow"><input id="mpRoomName" maxlength="24" placeholder="New room name"><label class="chk"><input type="checkbox" id="mpPrivate"> Private</label><button id="mpCreate">Create room</button></div>
+        <div class="mprow"><input id="mpCode" maxlength="8" placeholder="Room code" autocapitalize="characters"><button id="mpJoin">Join by code</button></div>
+        <p class="hint" id="mpStatus"></p>
+        <button id="mpClose" class="secondary">Back</button>
+      </div>
+      <div id="mpRoom" style="display:none">
+        <div class="mprow roombar"><span>Room <b id="mpRoomCode"></b></span><span id="mpRoomInfo"></span><button id="mpLeave" class="secondary small">Leave room</button></div>
+        <p class="hint" id="mpInvite"></p>
+      </div>
+    </div>
   </div>
 </div>
 <div id="nogl"><div><h2>WebGL2 is not available</h2><p>Please open this file in a recent version of Chrome, Edge, Firefox or Safari.</p></div></div>
 
 <script>
 "use strict";
+// Headless mode: the room server (steelfront-server/) runs this same script in Node as the authority for an
+// online room. There is no screen, no local player and no audio there; see the "online rooms" section.
+const HEADLESS = !!(typeof window !== "undefined" && window.SF_HEADLESS);
 // Snapshot the page source before the game touches the DOM, so the download
 // button can save a clean copy even when the file was opened from disk.
 const PAGE_SOURCE = "<!DOCTYPE html>\n" + document.documentElement.outerHTML + "\n";
@@ -222,7 +262,7 @@ function ballistic(x, y, v) {
 }
 
 // ---------------------------------------------------------------- noise
-let seed = (Math.random() * 1e9) | 0;
+let seed = HEADLESS ? window.SF_HEADLESS.seed | 0 : (Math.random() * 1e9) | 0;
 function hash(ix, iz, s) {
   let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + Math.imul(s, 1442695041)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
@@ -1298,6 +1338,7 @@ for (const k in AIR) {
   T.reload = 40; // rearm time for bombs/rockets
   TYPES[k] = T;
 }
+for (const k in TYPES) TYPES[k].key = k; // network id of each vehicle type
 const AIR_LIST = Object.values(AIR);
 const GROUND_LIST = [TYPES.light, TYPES.medium, TYPES.heavy, ...Object.values(HIST)];
 // stores and shared air meshes
@@ -1331,7 +1372,17 @@ const flagMesh = (() => { const b = builder(); addBox(b, chain(trans(1.6, 9, 0),
 let terrainMesh = null, propsMesh = null, outerMesh = null, cloudMesh = null;
 const buildings = [], trees = [];
 const minimapBg = document.createElement("canvas");
+// Small seeded PRNG: the world (buildings, trees, clouds) is drawn from it so that every browser in an online
+// room and the room server build exactly the same map from the room's seed.
+function mulberry32(a) {
+  return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
 function generateWorld() {
+  const sysRandom = Math.random;
+  Math.random = mulberry32(seed ^ 0x2545f491);
+  try { buildWorld(); } finally { Math.random = sysRandom; }
+}
+function buildWorld() {
   flats = [];
   for (const z of ZONE_POS) flats.push({ x: z[0], z: z[2], r0: 40, r1: 95, k: 0.88, h: rawHeight(z[0], z[2]) });
   for (const b of BASES) flats.push({ x: b[0], z: b[2], r0: 60, r1: 120, k: 0.92, h: rawHeight(b[0], b[2]) });
@@ -1435,6 +1486,7 @@ function generateWorld() {
   for (const t of trees) t.M = chain(trans(t.x, t.y, t.z), scl(t.s, t.s, t.s));
 
   // minimap background
+  if (HEADLESS) return;
   const S = 220; minimapBg.width = minimapBg.height = S;
   const mc = minimapBg.getContext("2d"), img = mc.createImageData(S, S);
   for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
@@ -1462,12 +1514,15 @@ function los(a, b) {
 // ---------------------------------------------------------------- tanks
 const NAMES = ["Hawk", "Viper", "Moose", "Kestrel", "Badger", "Falcon", "Granite", "Wolf", "Comet", "Rook", "Otter", "Ember", "Lancer", "Bison", "Pike", "Raven", "Jackal", "Thorn", "Mako", "Atlas"];
 let tanks = [], player = null, selectedType = TYPES.sherman;
+function makeAI() {
+  return { phase: "approach", phaseT: 0, air: null, ground: null, groundT: 0, think: 0, target: null, goal: null, goalZone: -1, err: [0, 0, 0], off: null, leadK: 1, fireDelay: 1, stuck: 0, rev: 0, revSteer: 1, pref: ZONE_POS.map(() => rand(0, 250)) };
+}
 function makeTank(team, type, name, isPlayer, slot) {
-  return { team, type, name, isPlayer, slot, pos: [0, 0, 0], yaw: 0, up: [0, 1, 0], X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1], speed: 0, vel: [0, 0, 0],
+  return { id: 0, life: 0, team, type, name, isPlayer, slot, pos: [0, 0, 0], yaw: 0, up: [0, 1, 0], X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1], speed: 0, vel: [0, 0, 0],
     turretYaw: 0, gunElev: 0, hp: type.hp, reloadT: 0, alive: true, deadT: 0, trackT: 0, engineT: 0, recoil: 0, pop: 0, popV: 0,
     kills: 0, deaths: 0, caps: 0, spottedUntil: 0, smokeT: 0, dustT: 0, M: mat(), TM: mat(), GM: mat(), lastHitBy: null, lastHitT: -99,
     throttle: 1, sink: 0, pr: 0, rr: 0, yr: 0, bombs: 0, rockets: 0, rearmT: 0, rocketT: 0, gunT: [], gunI: [], fireT: 0, wingDmg: 0, crashed: false, propA: 0, rearT: 0, mag: 0, mzI: 0, gunSnd: 0,
-    ai: isPlayer ? null : { phase: "approach", phaseT: 0, air: null, ground: null, groundT: 0, think: 0, target: null, goal: null, goalZone: -1, err: [0, 0, 0], off: null, leadK: 1, fireDelay: 1, stuck: 0, rev: 0, revSteer: 1, pref: ZONE_POS.map(() => rand(0, 250)) } };
+    ai: isPlayer ? null : makeAI() };
 }
 function spawnTank(t) {
   const base = BASES[t.team], dir = t.team === 0 ? 1 : -1;
@@ -1475,11 +1530,12 @@ function spawnTank(t) {
   t.pos = [x, heightAt(x, z), z]; t.yaw = t.team === 0 ? 0 : Math.PI; t.speed = 0; t.up = [0, 1, 0];
   t.turretYaw = 0; t.gunElev = 0; t.hp = t.type.hp; t.alive = true; t.deadT = 0; t.trackT = 0; t.engineT = 0;
   t.reloadT = 1; t.pop = 0; t.popV = 0; t.recoil = 0; t.lastHitBy = null; t.fireT = 0; t.wingDmg = 0; t.crashed = false;
-  t.mag = t.type.auto ? t.type.auto.mag : 0;
+  t.mag = t.type.auto ? t.type.auto.mag : 0; t.life++; t.idle = false;
   if (t.type.air) spawnPlane(t);
   if (t.ai) { t.ai.target = null; t.ai.goal = null; t.ai.fireDelay = 1.5; t.ai.pref = ZONE_POS.map(() => rand(0, 250)); }
   void dir;
   updateTankMatrices(t);
+  if (NET.on && t === player) netSend({ k: "spawn", ty: t.type.key, life: t.life });
 }
 function updateTankMatrices(t) {
   if (t.type.air) { t.M = basisMat(t.X, t.Y, t.Z, t.pos); t.TM = t.GM = t.M; return; }
@@ -1526,10 +1582,11 @@ function settle(t, dt) {
 function collideTank(t) {
   const r = t.type.rad, p = t.pos;
   for (const o of tanks) {
-    if (o === t || o.type.air) continue;
+    if (o === t || o.type.air || o.idle) continue;
     const dx = p[0] - o.pos[0], dz = p[2] - o.pos[2], d = Math.hypot(dx, dz), rr = r + o.type.rad * 0.9;
     if (d < rr && d > 0.01) {
-      const push = rr - d, k = o.alive && !o.isPlayer ? 0.5 : 1;
+      // only bots get shoved; players (local, remote or networked) move themselves
+      const push = rr - d, k = o.alive && o.ai ? 0.5 : 1;
       p[0] += dx / d * push * k; p[2] += dz / d * push * k;
       if (o.alive && k < 1) { o.pos[0] -= dx / d * push * 0.5; o.pos[2] -= dz / d * push * 0.5; }
       t.speed *= 0.92;
@@ -1547,7 +1604,7 @@ function collideTank(t) {
   for (const tr of trees) {
     if (tr.falling) continue;
     const dx = tr.x - p[0], dz = tr.z - p[2];
-    if (dx * dx + dz * dz < (r + 0.5) * (r + 0.5)) { tr.falling = true; tr.dir = Math.atan2(dx, dz); t.speed *= 0.85; if (t.isPlayer) sfxCrack(); }
+    if (dx * dx + dz * dz < (r + 0.5) * (r + 0.5)) { knockTree(tr, Math.atan2(dx, dz)); t.speed *= 0.85; if (t.isPlayer) sfxCrack(); }
   }
   p[0] = clamp(p[0], -BOUND, BOUND); p[2] = clamp(p[2], -BOUND, BOUND);
 }
@@ -1573,15 +1630,40 @@ function fire(t) {
     if (t.mag <= 0) return;
     const mz = T.muzzles[t.mzI++ % T.muzzles.length], m = tp(t.GM, [mz[0], mz[1], T.bar.len]);
     const d = vnorm(vadd(gunDir(t), [rand(-1, 1) * 0.004, rand(-1, 1) * 0.004, rand(-1, 1) * 0.004]));
-    shells.push({ kind: "bullet", small: true, p: m, v: vscale(d, T.v0), owner: t, pen: T.pen, dmg: T.dmg, life: 3, start: m, col: [1, 0.85, 0.5] });
-    t.mag--; t.reloadT = t.mag > 0 ? 1 / T.auto.rate : T.auto.magReload; t.recoil = 0.08;
-    puff(m, vscale(d, 6), [1, 0.8, 0.4], 0.06, 0.15, 0, 1, -1);
-    sfxGun(t);
+    addShell(t, "main", m, vscale(d, T.v0));
+    t.mag--; t.reloadT = t.mag > 0 ? 1 / T.auto.rate : T.auto.magReload;
+    muzzleFx(t, m, d);
     return;
   }
   const m = muzzle(t), d = gunDir(t);
-  shells.push({ kind: "shell", p: m, v: vscale(d, T.v0), owner: t, pen: T.pen, dmg: T.dmg, life: 4, start: m });
-  t.reloadT = T.reload * (t.breechT > 0 ? 1.6 : 1); t.recoil = 0.45;
+  addShell(t, "main", m, vscale(d, T.v0));
+  t.reloadT = T.reload * (t.breechT > 0 ? 1.6 : 1);
+  muzzleFx(t, m, d);
+}
+// Every projectile is described by its owner and weapon ("main", "g<i>" aircraft gun, "rear", "rkt", "bomb"),
+// so the network only has to send positions; damage values always come from the owner's vehicle type.
+function weaponShell(t, w) {
+  const T = t.type;
+  if (w === "main") return T.air ? null : T.auto ? { kind: "bullet", small: true, pen: T.pen, dmg: T.dmg, life: 3, col: [1, 0.85, 0.5] } : { kind: "shell", pen: T.pen, dmg: T.dmg, life: 4 };
+  if (w === "rear") return T.rearGunner ? { kind: "bullet", small: true, pen: 20, dmg: 1.6, life: 1.6, col: T.tracer } : null;
+  if (w === "bomb") return T.bombs ? { kind: "bomb", he: BOMBS[T.bombs.kg], kg: T.bombs.kg, life: 40 } : null;
+  if (w === "rkt") { const R = T.rockets && ROCKETS[T.rockets.kind]; return R ? { kind: "rocket", pen: R.pen, he: R.he, life: 6 } : null; }
+  const g = T.guns && typeof w === "string" && w[0] === "g" ? T.guns[+w.slice(1)] : null;
+  return g ? { kind: "bullet", small: true, pen: g.pen, dmg: g.dmg, life: 2.2, col: T.tracer } : null;
+}
+function addShell(t, w, p, v) {
+  const s = weaponShell(t, w);
+  if (!s) return null;
+  Object.assign(s, { w, p, v, owner: t, start: p, ghost: NET.on && t !== player });
+  // aircraft guns aren't sent shot by shot: snapshots carry a "firing" flag and each browser draws its own tracers
+  if (w[0] !== "g") { if (HEADLESS) netEmit({ k: "sh", o: t.id, w, p: rv(p, 2), v: rv(v, 2) }); else if (NET.on && t === player) netSend({ k: "sh", w, p: rv(p, 2), v: rv(v, 2) }); }
+  shells.push(s);
+  return s;
+}
+// muzzle flash, smoke and sound for a tank gun (also played for shots fired by other players)
+function muzzleFx(t, m, d) {
+  if (t.type.auto) { t.recoil = 0.08; puff(m, vscale(d, 6), [1, 0.8, 0.4], 0.06, 0.15, 0, 1, -1); sfxGun(t); return; }
+  t.recoil = 0.45;
   for (let i = 0; i < 7; i++) puff(vadd(m, vscale(d, rand(0, 1.5))), vadd(vscale(d, rand(4, 14)), [rand(-2, 2), rand(-2, 2), rand(-2, 2)]), [1, 0.75, 0.3], rand(0.4, 0.9), 0.12, 0, 1, -1);
   for (let i = 0; i < 8; i++) puff(vadd(m, vscale(d, rand(0, 3))), vadd(vscale(d, rand(1, 5)), [rand(-1.5, 1.5), rand(0, 2), rand(-1.5, 1.5)]), [0.72, 0.7, 0.66], rand(0.8, 1.6), rand(0.5, 1.0), 0, 0, 1.0, 0.45);
   sfxBoom(t);
@@ -1621,6 +1703,7 @@ function trace(a, b, ignore) {
     if (t === ignore) continue;
     const dx = t.pos[0] - mid[0], dz = t.pos[2] - mid[2], r = half + Math.max(6, t.type.rad + 1);
     if (dx * dx + dz * dz > r * r) continue;
+    if (t.idle) continue;
     const h = hitTank(t, a, b);
     if (h && (!best || h.t < best.t)) best = { ...h, kind: "tank", tank: t };
   }
@@ -1660,19 +1743,11 @@ function updateShells(dt) {
 }
 function impact(s, hit) {
   const p = hit.p;
+  // online: this browser only draws the impact; the room server applies damage for our own shots (hit claim)
+  if (NET.on) { if (!s.ghost && (hit.kind === "tank" || s.he)) netClaim(s, hit); impactFx(s, hit); return; }
   if (s.he) { explode(p, s.he, s.owner, hit.kind === "tank" ? hit.tank : null, s, hit); return; }
   if (hit.kind === "tank" && hit.tank.type.air) { planeImpact(s, hit); return; }
-  if (s.small && (hit.kind === "ground" || hit.kind === "building")) {
-    if (Math.random() < 0.5) puff(p, [rand(-1, 1), rand(1, 3), rand(-1, 1)], hit.kind === "ground" ? [0.45, 0.38, 0.28] : [0.6, 0.56, 0.5], rand(0.3, 0.6), rand(0.2, 0.4), 6, 0, 0.6, 0.8);
-    return;
-  }
-  if (hit.kind === "ground" || hit.kind === "building") {
-    const c = hit.kind === "ground" ? [0.42, 0.34, 0.24] : [0.6, 0.56, 0.5];
-    for (let i = 0; i < 12; i++) puff(p, [rand(-3, 3), rand(3, 10), rand(-3, 3)], c, rand(0.6, 1.4), rand(0.5, 1.4), 9, 0, 0.8, 0.9);
-    for (let i = 0; i < 4; i++) puff(p, [rand(-1, 1), rand(1, 3), rand(-1, 1)], [0.55, 0.5, 0.45], rand(1.2, 2), rand(1.5, 2.5), 0, 0, 1.2, 0.5);
-    sfxThud(p);
-    return;
-  }
+  if (hit.kind === "ground" || hit.kind === "building") { groundFx(s, hit); return; }
   const t = hit.tank, T = t.type, shooter = s.owner;
   if (!t.alive) { sparks(p, 6); return; }
   const n = [0, 0, 0]; n[hit.axis] = hit.sign;
@@ -1701,20 +1776,39 @@ function impact(s, hit) {
   }
   if (result !== "PENETRATION") sparks(p, s.small ? 2 : 10);
   if (s.small) {
-    if (t.isPlayer && (result === "PENETRATION" || Math.random() < 0.1)) playerHit(result, shooter);
-    if (shooter.isPlayer) hitMarkT = 0.12;
+    if (result === "PENETRATION" || Math.random() < 0.1) tell(t, "ph", result, shooter.name);
+    tell(shooter, "mark", 0.12);
     if (t.hp <= 0) { destroyTank(t, shooter); msgs.unshift("TARGET DESTROYED"); }
-    if (shooter.isPlayer && msgs.length) showHit(msgs.join("\n"), "#ffd34d");
+    if (msgs.length) tell(shooter, "hit", msgs.join("\n"), "#ffd34d");
     return;
   }
-  if (t.isPlayer) playerHit(result, shooter);
-  if (shooter.isPlayer) sfxPing(result === "PENETRATION");
+  tell(t, "ph", result, shooter.name);
+  tell(shooter, "ping", result === "PENETRATION");
   if (t.hp <= 0) { destroyTank(t, shooter); msgs.unshift("TARGET DESTROYED"); }
-  if (shooter.isPlayer) showHit([result, ...msgs].join("\n"), result === "PENETRATION" || t.hp <= 0 ? "#ffd34d" : "#c8d0d8");
+  tell(shooter, "hit", [result, ...msgs].join("\n"), result === "PENETRATION" || t.hp <= 0 ? "#ffd34d" : "#c8d0d8");
+}
+function groundFx(s, hit) {
+  const p = hit.p;
+  if (s.small) {
+    if (Math.random() < 0.5) puff(p, [rand(-1, 1), rand(1, 3), rand(-1, 1)], hit.kind === "ground" ? [0.45, 0.38, 0.28] : [0.6, 0.56, 0.5], rand(0.3, 0.6), rand(0.2, 0.4), 6, 0, 0.6, 0.8);
+    return;
+  }
+  const c = hit.kind === "ground" ? [0.42, 0.34, 0.24] : [0.6, 0.56, 0.5];
+  for (let i = 0; i < 12; i++) puff(p, [rand(-3, 3), rand(3, 10), rand(-3, 3)], c, rand(0.6, 1.4), rand(0.5, 1.4), 9, 0, 0.8, 0.9);
+  for (let i = 0; i < 4; i++) puff(p, [rand(-1, 1), rand(1, 3), rand(-1, 1)], [0.55, 0.5, 0.45], rand(1.2, 2), rand(1.5, 2.5), 0, 0, 1.2, 0.5);
+  sfxThud(p);
+}
+// visual-only impact (online play): sparks, dust or an explosion, no damage
+function impactFx(s, hit) {
+  if (s.he) { explode(hit.p, s.he, s.owner, null, s, hit); return; }
+  if (hit.kind === "tank") { sparks(hit.p, s.small ? 2 : 8); return; }
+  groundFx(s, hit);
 }
 function sparks(p, n) { for (let i = 0; i < n; i++) puff(p, [rand(-8, 8), rand(-2, 8), rand(-8, 8)], [1, 0.9, 0.5], rand(0.15, 0.35), 0.1, 6, 1, -1); }
 function destroyTank(t, killer, crashed = false) {
   if (!t.alive) return;
+  // online: deaths come from the room server; the only one a browser decides itself is crashing its own aircraft
+  if (NET.on && !NET.applying) { if (t !== player || !crashed) return; netSend({ k: "crash" }); }
   t.alive = false; t.hp = 0; t.deadT = 0; t.popV = rand(4, 8); t.deaths++;
   if (!t.type.air) t.speed = 0;
   if (killer && killer.team !== t.team) { killer.kills++; }
@@ -1724,13 +1818,15 @@ function destroyTank(t, killer, crashed = false) {
   for (let i = 0; i < 18; i++) puff(p, [rand(-3, 3), rand(2, 7), rand(-3, 3)], [0.2, 0.2, 0.2], rand(1.5, 3), rand(2, 3), 0, 0, 1.3, 0.8);
   for (let i = 0; i < 10; i++) puff(p, [rand(-9, 9), rand(6, 14), rand(-9, 9)], [0.15, 0.15, 0.14], rand(1, 2), 0.35, 14, 0, 0);
   sfxBoom(t, 1.6);
-  const cls = x => x.isPlayer ? "me" : x.team === 0 ? "ally" : "enemy";
-  feed(killer ? `<span class="${cls(killer)}">${killer.name}</span> &#10148; <span class="${cls(t)}">${t.name}</span>` : `<span class="${cls(t)}">${t.name}</span> ${crashed ? "crashed" : "destroyed"}`);
+  const cls = x => x.isPlayer ? "me" : x.team === myTeam() ? "ally" : "enemy";
+  feed(killer ? `<span class="${cls(killer)}">${esc(killer.name)}</span> &#10148; <span class="${cls(t)}">${esc(t.name)}</span>` : `<span class="${cls(t)}">${esc(t.name)}</span> ${crashed ? "crashed" : "destroyed"}`);
+  if (HEADLESS) netEmit({ k: "kill", v: t.id, by: killer ? killer.id : -1, cr: crashed ? 1 : 0 });
 }
 
 // ---------------------------------------------------------------- particles
 let parts = [];
 function puff(p, v, col, life, size, grav = 0, emis = 0, grow = 0, alpha = 1) {
+  if (HEADLESS) return;
   if (parts.length > 1200) parts.shift();
   parts.push({ p: p.slice(), v: v.slice(), col, life, max: life, size, grav, emis, grow, alpha });
 }
@@ -1752,8 +1848,9 @@ let zones = [], tickets = [START_TICKETS, START_TICKETS], ticketAcc = 0;
 function updateZones(dt) {
   for (const [zi, z] of zones.entries()) {
     const zp = ZONE_POS[zi];
-    let a = 0, e = 0, playerIn = false;
-    for (const t of tanks) if (t.alive && !t.type.air && dist2d(t.pos, zp) < ZONE_R) { if (t.team === 0) a++; else e++; if (t.isPlayer) playerIn = true; }
+    let a = 0, e = 0;
+    const inside = [];
+    for (const t of tanks) if (t.alive && !t.type.air && dist2d(t.pos, zp) < ZONE_R) { if (t.team === 0) a++; else e++; inside.push(t); }
     z.contested = a > 0 && e > 0;
     const before = z.owner;
     if (a > 0 && e === 0) z.prog = Math.min(1, z.prog + 0.06 * Math.min(a, 3) * dt);
@@ -1761,11 +1858,9 @@ function updateZones(dt) {
     if (z.prog >= 1) z.owner = 0; else if (z.prog <= -1) z.owner = 1;
     else if ((z.owner === 0 && z.prog <= 0) || (z.owner === 1 && z.prog >= 0)) z.owner = -1;
     if (z.owner !== before) {
-      const L = "ABC"[zi];
-      if (z.owner === 0) { feed(`<span class="ally">Zone ${L} captured</span>`); centerMsg(`ZONE ${L} CAPTURED`, "#7cc0ff"); if (playerIn) player.caps++; }
-      else if (z.owner === 1) { feed(`<span class="enemy">Enemy captured zone ${L}</span>`); centerMsg(`ZONE ${L} LOST`, "#ff7a6e"); }
+      for (const t of inside) if (t.team === z.owner) t.caps++;
+      zoneChanged(zi, z.owner);
     }
-    z.playerIn = playerIn;
   }
   ticketAcc += dt;
   while (ticketAcc >= 1) {
@@ -1774,6 +1869,14 @@ function updateZones(dt) {
     if (diff > 0) tickets[1] = Math.max(0, tickets[1] - diff * 2);
     if (diff < 0) tickets[0] = Math.max(0, tickets[0] + diff * 2);
   }
+}
+
+// zone captured / lost message, from the local player's side
+function zoneChanged(zi, owner) {
+  if (HEADLESS || owner < 0) return;
+  const L = "ABC"[zi];
+  if (owner === myTeam()) { feed(`<span class="ally">Zone ${L} captured</span>`); centerMsg(`ZONE ${L} CAPTURED`, "#7cc0ff"); }
+  else { feed(`<span class="enemy">Enemy captured zone ${L}</span>`); centerMsg(`ZONE ${L} LOST`, "#ff7a6e"); }
 }
 
 // ---------------------------------------------------------------- AI
@@ -1937,6 +2040,7 @@ function boundaryDir(t) {
 }
 function planeGuns(t, dt, firing) {
   const T = t.type;
+  t.firingNow = firing;
   T.guns.forEach((g, gi) => {
     if (!firing) { t.gunT[gi] = Math.max(0, t.gunT[gi] - dt); return; }
     t.gunT[gi] -= dt;
@@ -1944,7 +2048,7 @@ function planeGuns(t, dt, firing) {
       t.gunT[gi] += 1 / g.rate;
       const lp = g.pts[t.gunI[gi]++ % g.pts.length], mw = tp(t.M, lp), conv = tp(t.M, [0, 0, CONV]);
       const d = vnorm(vadd(vnorm(vsub(conv, mw)), [rand(-1, 1) * 0.003, rand(-1, 1) * 0.003, rand(-1, 1) * 0.003]));
-      shells.push({ kind: "bullet", small: true, p: mw, v: vadd(vscale(d, g.v0), t.vel), owner: t, pen: g.pen, dmg: g.dmg, life: 2.2, start: mw, col: T.tracer });
+      addShell(t, "g" + gi, mw, vadd(vscale(d, g.v0), t.vel));
       if (Math.random() < 0.25) puff(mw, vscale(t.vel, 0.9), [1, 0.8, 0.4], 0.05, 0.18, 0, 1, -1);
     }
   });
@@ -1953,7 +2057,7 @@ function planeGuns(t, dt, firing) {
 function dropBomb(t) {
   const T = t.type; if (!T.bombs || t.bombs <= 0 || !t.alive) return;
   const p = tp(t.M, T.bombs.pts[(t.bombs - 1) % T.bombs.pts.length]); t.bombs--;
-  shells.push({ kind: "bomb", p, v: t.vel.slice(), owner: t, he: BOMBS[T.bombs.kg], kg: T.bombs.kg, life: 40, start: p });
+  addShell(t, "bomb", p, t.vel.slice());
   if (t.isPlayer) tone("triangle", 300, 0.08, 0.15, 200);
 }
 function fireRockets(t) {
@@ -1962,7 +2066,7 @@ function fireRockets(t) {
   for (let k = 0; k < 2 && t.rockets > 0; k++) {
     const p = tp(t.M, T.rockets.pts[(t.rockets - 1) % T.rockets.pts.length]); t.rockets--;
     const d = vnorm(vadd(t.Z, [rand(-1, 1) * 0.006, rand(-1, 1) * 0.006, rand(-1, 1) * 0.006]));
-    shells.push({ kind: "rocket", p, v: vadd(vscale(d, R.v), vscale(t.vel, 0.5)), owner: t, pen: R.pen, he: R.he, life: 6, start: p });
+    addShell(t, "rkt", p, vadd(vscale(d, R.v), vscale(t.vel, 0.5)));
   }
   noiseHit(volAt(t.pos) * 0.4, 3000, 500, 0.5);
 }
@@ -1978,6 +2082,7 @@ function explode(p, he, owner, direct, s, hit) {
   for (let i = 0; i < 14; i++) puff(p, [rand(-12, 12), rand(8, 22), rand(-12, 12)], [0.35, 0.3, 0.24], rand(1, 2), 0.3, 14, 0, 0);
   noiseHit(volAt(p) * (big ? 1.6 : 0.9), 2200, 60, big ? 1.6 : 0.8); tone("sine", 55, volAt(p) * 0.8, 0.8, 25);
   if (owner.isPlayer && (vlen(vsub(p, cam.pos)) < 300)) dmgFlash = Math.max(dmgFlash, 0.1);
+  if (NET.on) return; // online: blast damage is applied by the room server
   const msgs = [];
   for (const t of tanks) {
     if (!t.alive || t.team === owner.team) continue;
@@ -1997,12 +2102,12 @@ function explode(p, he, owner, direct, s, hit) {
       if (d < he.kill * 1.8 && t.trackT <= 0) { t.trackT = 7; msgs.push("TRACK DESTROYED"); }
     }
     t.hp -= dmg; t.lastHitBy = owner; t.lastHitT = now;
-    if (t.isPlayer) { dmgFlash = 1; showHit(`Hit by ${s && s.kind === "rocket" ? "rocket" : "bomb"} — ${owner.name}`, "#ff7a6e"); }
+    if (dmg > 0) { tell(t, "flash", 1); tell(t, "hit", `Hit by ${s && s.kind === "rocket" ? "rocket" : "bomb"} — ${owner.name}`, "#ff7a6e"); }
     if (t.hp <= 0) { destroyTank(t, owner); msgs.unshift("TARGET DESTROYED"); }
-    else if (owner.isPlayer && dmg > 5 && !msgs.length) msgs.push("HIT");
+    else if (dmg > 5 && !msgs.length) msgs.push("HIT");
   }
-  for (const tr of trees) if (!tr.falling && Math.hypot(tr.x - p[0], tr.z - p[2]) < he.R * 0.5 && p[1] - tr.y < 12) { tr.falling = true; tr.dir = Math.atan2(tr.x - p[0], tr.z - p[2]); }
-  if (owner.isPlayer && msgs.length) { showHit([...new Set(msgs)].join("\n"), "#ffd34d"); hitMarkT = 0.2; }
+  for (const tr of trees) if (!tr.falling && Math.hypot(tr.x - p[0], tr.z - p[2]) < he.R * 0.5 && p[1] - tr.y < 12) knockTree(tr, Math.atan2(tr.x - p[0], tr.z - p[2]));
+  if (msgs.length) { tell(owner, "hit", [...new Set(msgs)].join("\n"), "#ffd34d"); tell(owner, "mark", 0.2); }
 }
 function planeImpact(s, hit) {
   const t = hit.tank, shooter = s.owner, p = hit.p;
@@ -2015,10 +2120,10 @@ function planeImpact(s, hit) {
   else if (Math.random() < (s.small ? 0.01 : 0.1) * (t.type.armorK || 1)) { dmg = 999; msgs.push("PILOT KNOCKED OUT"); }
   t.hp -= dmg; t.lastHitBy = shooter; t.lastHitT = now;
   sparks(p, 3);
-  if (t.isPlayer) { dmgFlash = Math.max(dmgFlash, s.small ? 0.25 : 1); if (msgs.length) showHit(msgs.join("\n") + ` — ${shooter.name}`, "#ff7a6e"); }
-  if (shooter.isPlayer) hitMarkT = 0.12;
+  tell(t, "flash", s.small ? 0.25 : 1); if (msgs.length) tell(t, "hit", msgs.join("\n") + ` — ${shooter.name}`, "#ff7a6e");
+  tell(shooter, "mark", 0.12);
   if (t.hp <= 0) { destroyTank(t, shooter); msgs.unshift("AIRCRAFT DESTROYED"); }
-  if (shooter.isPlayer && msgs.length) showHit(msgs.join("\n"), "#ffd34d");
+  if (msgs.length) tell(shooter, "hit", msgs.join("\n"), "#ffd34d");
 }
 function rearGunner(t, dt) {
   t.rearT -= dt; if (t.rearT > 0) return;
@@ -2035,7 +2140,7 @@ function rearGunner(t, dt) {
   t.rearT = --t.rearN > 0 ? 0.11 : rand(0.8, 1.6);
   const m = tp(t.M, [0, 1.3, -2.6]), tof = bd / 860, aim = vadd(vadd(best.pos, vscale(vsub(best.vel, t.vel), tof * t.rearLead)), t.rearOff);
   const d = vnorm(vadd(vnorm(vsub(aim, m)), [rand(-1, 1) * 0.03, rand(-1, 1) * 0.03, rand(-1, 1) * 0.03]));
-  shells.push({ kind: "bullet", small: true, p: m, v: vadd(vscale(d, 860), t.vel), owner: t, pen: 20, dmg: 1.6, life: 1.6, start: m, col: t.type.tracer });
+  addShell(t, "rear", m, vadd(vscale(d, 860), t.vel));
 }
 // per-frame aircraft upkeep shared by the player and AI pilots
 function planeUpkeep(t, dt) {
@@ -2052,7 +2157,7 @@ function planeUpkeep(t, dt) {
     puff(e, [rand(-1, 1), rand(0, 1), rand(-1, 1)], t.fireT > 0 ? [0.15, 0.13, 0.12] : [0.5, 0.5, 0.5], rand(2, 3.5), rand(0.6, 1.2), 0, 0, 1.8, 0.6);
     if (t.fireT > 0) puff(e, vscale(t.vel, 0.6), [1, 0.55, 0.15], 0.3, rand(0.5, 0.9), 0, 1, 0.5, 0.9);
   }
-  if (t.fireT > 0) { t.fireT -= dt; t.hp -= 3.5 * dt; if (t.hp <= 0) { destroyTank(t, now - t.lastHitT < 30 ? t.lastHitBy : null); return; } }
+  if (t.fireT > 0 && !NET.on) { t.fireT -= dt; t.hp -= 3.5 * dt; if (t.hp <= 0) { destroyTank(t, now - t.lastHitT < 30 ? t.lastHitBy : null); return; } }
   // collisions: terrain, buildings, trees
   const gh = heightAt(t.pos[0], t.pos[2]);
   let crash = t.pos[1] < gh + 1.2;
@@ -2176,16 +2281,30 @@ let hitTimer = 0, centerTimer = 0, dmgFlash = 0, hitMarkT = 0;
 function showHit(text, color) { const e = $("hitmsg"); e.textContent = text; e.style.color = color; hitTimer = 2.2; }
 function centerMsg(text, color = "#fff") { const e = $("center"); e.textContent = text; e.style.color = color; centerTimer = 2.5; }
 function feed(html) {
+  if (HEADLESS) return;
   const kf = $("killfeed"), d = document.createElement("div");
   d.innerHTML = html; kf.prepend(d);
   while (kf.children.length > 6) kf.lastChild.remove();
   setTimeout(() => d.remove(), 9000);
 }
-function playerHit(result, shooter) {
+function playerHit(result, shooterName) {
   if (result === "PENETRATION") { dmgFlash = 1; tone("sawtooth", 90, 0.25, 0.4, 40); }
   else { dmgFlash = Math.max(dmgFlash, 0.35); tone("triangle", 1800, 0.12, 0.3, 1200); }
   if (!player.alive) return;
-  showHit(`${result === "PENETRATION" ? "You were penetrated" : result === "RICOCHET" ? "Ricochet off your armour" : "Your armour held"} — ${shooter.name}`, result === "PENETRATION" ? "#ff7a6e" : "#9fd4ff");
+  showHit(`${result === "PENETRATION" ? "You were penetrated" : result === "RICOCHET" ? "Ricochet off your armour" : "Your armour held"} — ${shooterName}`, result === "PENETRATION" ? "#ff7a6e" : "#9fd4ff");
+}
+const esc = v => String(v).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const myTeam = () => player ? player.team : 0;
+// Hit / damage feedback for a vehicle's crew: shown here for the local player; online, the room server forwards it
+// to the player driving that vehicle. Bots get nothing.
+const UI = {
+  hit: (text, color) => showHit(text, color), ph: (result, name) => playerHit(result, name), ping: pen => sfxPing(pen),
+  flash: v => { dmgFlash = Math.max(dmgFlash, v); }, mark: v => { hitMarkT = v; }, center: (text, color) => centerMsg(text, color),
+};
+function tell(t, m, ...a) {
+  if (!t) return;
+  if (t === player) UI[m](...a);
+  else if (HEADLESS && t.remote) netEmit({ k: "ui", to: t.owner, m, a });
 }
 let menuTab = "ground";
 function buildCards() {
@@ -2230,11 +2349,13 @@ function newBattle() {
   tanks = [];
   const pool = GROUND_LIST.filter(T => T.role !== "spaa");
   const pickType = s => s === 0 || s === 6 ? AIR_LIST[(Math.random() * AIR_LIST.length) | 0] : s === 5 ? TYPES.wirbelwind : pool[(Math.random() * pool.length) | 0];
-  player = makeTank(0, selectedType, "You", true, 3);
+  // the room server has no local player: every seat starts as a bot and players take one over when they join
+  player = HEADLESS ? null : makeTank(0, selectedType, "You", true, 3);
   for (let team = 0; team < 2; team++) for (let s = 0; s < TEAM_SIZE; s++) {
-    if (team === 0 && s === 3) { tanks.push(player); continue; }
+    if (team === 0 && s === 3 && player) { tanks.push(player); continue; }
     tanks.push(makeTank(team, pickType(s), names.pop(), false, s));
   }
+  tanks.forEach((t, i) => { t.id = i; });
   tanks.forEach(spawnTank);
   cam.yaw = 0; cam.pitch = -0.08; cam.sniper = false; cam.rig = false; simAcc = 0;
   $("killfeed").innerHTML = "";
@@ -2246,15 +2367,18 @@ function showMenu(mode) {
   overlay.style.display = "flex";
   overlay.className = mode === "start" ? "showroom" : "";
   menuTab = selectedType.air ? "air" : "ground";
-  $("restart").style.display = mode === "paused" ? "inline-block" : "none";
+  $("restart").style.display = mode === "paused" && !NET.on ? "inline-block" : "none";
   if (mode === "start") { $("title").textContent = "STEEL FRONT"; $("play").textContent = "Deploy"; }
   if (mode === "paused") { $("title").textContent = "PAUSED"; $("sub").textContent = "Tank choice applies to your next respawn."; $("play").textContent = "Resume"; }
+  if (mode === "start" && NET.on) $("sub").textContent = "Online room · pick a vehicle and deploy. You take over a bot's seat on your team.";
   if (mode === "over") {
-    const win = tickets[1] <= 0 && tickets[0] > 0 ? true : tickets[0] <= 0 && tickets[1] > 0 ? false : tickets[0] >= tickets[1];
+    const me = myTeam(), them = 1 - me;
+    const win = NET.on ? NET.winner === me : tickets[them] <= 0 && tickets[me] > 0 ? true : tickets[me] <= 0 && tickets[them] > 0 ? false : tickets[me] >= tickets[them];
     $("title").textContent = win ? "VICTORY" : "DEFEAT";
     $("sub").textContent = `Kills ${player.kills} · Deaths ${player.deaths} · Captures ${player.caps}\nBattle time ${Math.floor(battleTime / 60)}:${String(Math.floor(battleTime % 60)).padStart(2, "0")}`;
     $("play").textContent = "Play again";
   }
+  mpPanel();
   buildCards();
 }
 
@@ -2267,7 +2391,11 @@ const requestLock = () => {
 };
 function startPlaying() {
   initAudio();
-  if (state === "menu" || state === "over") newBattle();
+  if (NET.on) {
+    // online: the battle keeps running on the server; deploying puts us into our seat
+    if (!NET.ready || NET.over) return;
+    if (player.idle) netDeploy();
+  } else if (state === "menu" || state === "over") newBattle();
   state = "playing"; overlay.style.display = "none";
   requestLock();
 }
@@ -2374,8 +2502,10 @@ function updateCamera(dt = 0) {
 }
 function step(dt) {
   battleTime += dt; now += dt;
+  if (NET.on) netClientPre(dt);
   const p = player;
-  if (p.alive && p.type.air) {
+  if (!p) { /* room server: no local player */ }
+  else if (p.alive && p.type.air) {
     if (keys.has("KeyW") || keys.has("ArrowUp")) p.throttle = Math.min(1, p.throttle + dt * 0.7);
     if (keys.has("KeyS") || keys.has("ArrowDown")) p.throttle = Math.max(0, p.throttle - dt * 0.7);
     const man = (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
@@ -2388,7 +2518,7 @@ function step(dt) {
     driveTank(p, thr, st, dt);
     aimTurret(p, cam.aim, dt);
     if (mouseDown) fire(p);
-  } else {
+  } else if (!p.idle) {
     respawnT -= dt;
     if (respawnT <= 0) {
       p.type = selectedType; spawnTank(p); p.prev = null; cam.sniper = false; cam.rig = false; freeDir = null; centerMsg("RESPAWNED", "#7cc0ff");
@@ -2400,6 +2530,10 @@ function step(dt) {
     t.trackT = Math.max(0, t.trackT - dt); t.engineT = Math.max(0, t.engineT - dt); t.breechT = Math.max(0, (t.breechT || 0) - dt);
     t.recoil = Math.max(0, t.recoil - dt * 1.2);
     if (t.type.auto && t.mag <= 0 && t.reloadT <= 0) t.mag = t.type.auto.mag;
+    // vehicles driven elsewhere (other players, or everything but our own vehicle in a browser that's online)
+    if (t.remote || t.ghost) netMoveUnit(t, dt);
+    if (t.idle) continue; // an online seat whose player hasn't deployed yet
+    if ((t.remote || t.ghost) && t.type.air) { netAirUnit(t, dt); updateTankMatrices(t); continue; }
     if (t.type.air) {
       if (t.alive) { if (t.ai) updateAirAI(t, dt); if (t.alive) planeUpkeep(t, dt); }
       else { t.deadT += dt; wreckFall(t, dt); if (t.ai && t.deadT > 12) spawnTank(t); }
@@ -2428,9 +2562,8 @@ function step(dt) {
     }
     updateTankMatrices(t);
   }
-  if (!p.alive && p.deadT === 0) { /* handled in destroyTank */ }
   spotT -= dt;
-  if (spotT <= 0) {
+  if (spotT <= 0 && !NET.on) {
     spotT = 0.5;
     for (const a of tanks) if (a.alive && a.type.air) for (const e of tanks) {
       if (!e.alive || e.team === a.team) continue;
@@ -2441,14 +2574,16 @@ function step(dt) {
   }
   updateShells(dt);
   updateParticles(dt);
-  updateZones(dt);
+  if (!NET.on && !NET.over) updateZones(dt);
   for (const tr of trees) if (tr.falling && tr.fall < 1.45) {
     tr.fall = Math.min(1.45, tr.fall + dt * (0.6 + tr.fall * 2.5));
     tr.M = chain(trans(tr.x, tr.y, tr.z), rotY(tr.dir), rotX(tr.fall), scl(tr.s, tr.s, tr.s));
   }
-  if (tickets[0] <= 0 || tickets[1] <= 0) { showMenu("over"); if (locked()) document.exitPointerLock(); }
+  if (HEADLESS) netHostPost(dt);
+  else if (NET.on) netClientPost(dt);
+  else if (tickets[0] <= 0 || tickets[1] <= 0) { showMenu("over"); if (locked()) document.exitPointerLock(); }
   // engine audio
-  if (engGain) {
+  if (engGain && p) {
     if (p.type.air) {
       engOsc.frequency.setTargetAtTime(55 + p.throttle * 40 + p.speed * 0.12, AC.currentTime, 0.1);
       engGain.gain.setTargetAtTime(p.alive ? 0.05 + p.throttle * 0.05 : 0, AC.currentTime, 0.1);
@@ -2494,12 +2629,12 @@ function render() {
   const fwdCull = (x, z, r) => { const dx = x - cam.pos[0], dz = z - cam.pos[2]; return dx * cam.dir[0] + dz * cam.dir[2] > -r - 10; };
   for (const t of trees) if (fwdCull(t.x, t.z, 6)) draw(treeMesh, t.M, t.tint);
   for (const [zi, z] of zones.entries()) {
-    const zp = ZONE_POS[zi], c = z.owner === 0 ? [0.25, 0.55, 1] : z.owner === 1 ? [1, 0.3, 0.25] : [0.95, 0.95, 0.95];
+    const zp = ZONE_POS[zi], c = z.owner === myTeam() ? [0.25, 0.55, 1] : z.owner >= 0 ? [1, 0.3, 0.25] : [0.95, 0.95, 0.95];
     draw(flagMesh, chain(trans(zp[0], zp[1], zp[2]), rotY(now * 0.3)), c, 0.3);
   }
   const discs = [];
   for (const t of tanks) {
-    if (t.isPlayer && cam.sniper && t.alive && !t.type.air) continue;
+    if (t.idle || (t.isPlayer && cam.sniper && t.alive && !t.type.air)) continue;
     if (!fwdCull(t.pos[0], t.pos[2], t.type.air ? 16 : 8)) continue;
     drawUnit(t, discs);
   }
@@ -2578,7 +2713,7 @@ function drawHud() {
   for (const [zi, z] of zones.entries()) {
     const zp = ZONE_POS[zi], s = project([zp[0], zp[1] + 13, zp[2]]);
     if (!s) continue;
-    hx.fillStyle = z.owner === 0 ? "#3c8ee6" : z.owner === 1 ? "#e2483c" : "rgba(220,220,220,.9)";
+    hx.fillStyle = z.owner === myTeam() ? "#3c8ee6" : z.owner >= 0 ? "#e2483c" : "rgba(220,220,220,.9)";
     hx.save(); hx.translate(s[0], s[1]); hx.rotate(Math.PI / 4); hx.fillRect(-9, -9, 18, 18); hx.restore();
     hx.fillStyle = "#fff"; hx.font = "bold 12px system-ui"; hx.fillText("ABC"[zi], s[0], s[1] + 4);
     hx.font = "11px system-ui"; hx.fillText(`${Math.round(dist2d(zp, player.pos))} m`, s[0], s[1] + 26);
@@ -2662,15 +2797,15 @@ function drawMinimap() {
   mm.drawImage(minimapBg, 0, 0);
   for (const [zi, z] of zones.entries()) {
     const [x, y] = toMap(ZONE_POS[zi][0], ZONE_POS[zi][2]);
-    mm.strokeStyle = z.owner === 0 ? "#3c8ee6" : z.owner === 1 ? "#e2483c" : "#fff"; mm.lineWidth = 2;
+    mm.strokeStyle = z.owner === myTeam() ? "#3c8ee6" : z.owner >= 0 ? "#e2483c" : "#fff"; mm.lineWidth = 2;
     mm.beginPath(); mm.arc(x, y, ZONE_R / MAP * 220, 0, Math.PI * 2); mm.stroke();
     mm.fillStyle = "#fff"; mm.font = "bold 10px system-ui"; mm.textAlign = "center"; mm.fillText("ABC"[zi], x, y + 4);
   }
   for (const t of tanks) {
     if (t.isPlayer || !t.alive) continue;
-    if (t.team !== 0 && t.spottedUntil < now) continue;
+    if (t.team !== myTeam() && t.spottedUntil < now) continue;
     const [x, y] = toMap(clamp(t.pos[0], -HALF, HALF), clamp(t.pos[2], -HALF, HALF));
-    mm.fillStyle = t.team === 0 ? "#5aaaff" : "#ff4a3c";
+    mm.fillStyle = t.team === myTeam() ? "#5aaaff" : "#ff4a3c";
     if (t.type.air) { mm.beginPath(); mm.moveTo(x, y - 4); mm.lineTo(x + 4, y + 3); mm.lineTo(x - 4, y + 3); mm.closePath(); mm.fill(); }
     else mm.fillRect(x - 2.5, y - 2.5, 5, 5);
   }
@@ -2707,22 +2842,24 @@ function updateDom(dt) {
   $("status").textContent = st.join(" · ");
   if (t.type.auto && t.mag > 0) { $("rltext").textContent = `Ammo ${t.mag}/${t.type.auto.mag}`; $("rlbar").firstChild.style.width = `${t.mag / t.type.auto.mag * 100}%`; }
   }
+  const me = myTeam(), sgn = me ? -1 : 1; // the left ticket bar, blue and capture progress are always your side
   for (const k of [0, 1]) {
-    const el = $(k ? "tkE" : "tkA");
-    el.firstChild.style.width = `${tickets[k] / START_TICKETS * 100}%`;
-    el.lastChild.textContent = tickets[k];
+    const el = $(k ? "tkE" : "tkA"), tk = tickets[k ? 1 - me : me];
+    el.firstChild.style.width = `${tk / START_TICKETS * 100}%`;
+    el.lastChild.textContent = tk;
   }
   zones.forEach((z, i) => {
     const el = $("z" + i); if (!el) return;
-    const c = z.owner === 0 ? "#3c8ee6" : z.owner === 1 ? "#e2483c" : "rgba(0,0,0,.4)";
-    const p = Math.abs(z.prog) * 100, pc = z.prog > 0 ? "#3c8ee6" : "#e2483c";
+    const c = z.owner === me ? "#3c8ee6" : z.owner >= 0 ? "#e2483c" : "rgba(0,0,0,.4)";
+    const p = Math.abs(z.prog) * 100, pc = z.prog * sgn > 0 ? "#3c8ee6" : "#e2483c";
     el.style.background = z.owner >= 0 ? c : `linear-gradient(0deg, ${pc} ${p}%, rgba(0,0,0,.4) ${p}%)`;
     el.style.borderColor = z.contested ? "#ffd34d" : "#fff";
   });
   // capture prompt
-  const zi = zones.findIndex(z => z.playerIn);
-  if (!t.alive) { $("center").textContent = `DESTROYED by ${t.lastHitBy ? t.lastHitBy.name : "unknown"}\nRespawning in ${Math.max(0, respawnT).toFixed(0)}…`; $("center").style.color = "#ff8a6a"; centerTimer = 0.2; }
-  else if (zi >= 0 && centerTimer <= 0) { const z = zones[zi]; $("center").textContent = z.contested ? `ZONE ${"ABC"[zi]} CONTESTED` : z.owner === 0 ? "" : `CAPTURING ${"ABC"[zi]}  ${Math.round((z.prog + 1) / 2 * 100)}%`; $("center").style.color = "#fff"; }
+  const zi = t.alive && !t.type.air ? ZONE_POS.findIndex(zp => dist2d(t.pos, zp) < ZONE_R) : -1;
+  if (t.idle) { if (centerTimer <= 0) $("center").textContent = ""; }
+  else if (!t.alive) { $("center").textContent = `DESTROYED by ${t.lastHitBy ? t.lastHitBy.name : "unknown"}\nRespawning in ${Math.max(0, respawnT).toFixed(0)}…`; $("center").style.color = "#ff8a6a"; centerTimer = 0.2; }
+  else if (zi >= 0 && zones[zi] && centerTimer <= 0) { const z = zones[zi]; $("center").textContent = z.contested ? `ZONE ${"ABC"[zi]} CONTESTED` : z.owner === me ? "" : `CAPTURING ${"ABC"[zi]}  ${Math.round((z.prog * sgn + 1) / 2 * 100)}%`; $("center").style.color = "#fff"; }
   else if (centerTimer <= 0) $("center").textContent = "";
   centerTimer -= dt;
   hitTimer -= dt; $("hitmsg").style.opacity = clamp(hitTimer, 0, 1);
@@ -2730,9 +2867,10 @@ function updateDom(dt) {
   const sb = $("scoreboard");
   if (keys.has("Tab") && state === "playing") {
     sb.style.display = "flex";
-    sb.innerHTML = [0, 1].map(team => `<table><tr><th class="${team ? "enemy" : "ally"}">${team ? "Enemy" : "Allies"} — ${tickets[team]}</th><th>K</th><th>D</th></tr>` +
-      tanks.filter(x => x.team === team).sort((a, b) => b.kills - a.kills).map(x => `<tr class="${x.isPlayer ? "me" : ""}"><td>${x.alive ? "" : "&#10006; "}${x.name} <small style="opacity:.6">${x.type.name}</small></td><td>${x.kills}</td><td>${x.deaths}</td></tr>`).join("") + "</table>").join("");
+    sb.innerHTML = [me, 1 - me].map(team => `<table><tr><th class="${team !== me ? "enemy" : "ally"}">${team !== me ? "Enemy" : "Allies"} — ${tickets[team]}</th><th>K</th><th>D</th></tr>` +
+      tanks.filter(x => x.team === team).sort((a, b) => b.kills - a.kills).map(x => `<tr class="${x.isPlayer ? "me" : ""}"><td>${x.idle ? "&#8230; " : x.alive ? "" : "&#10006; "}${esc(x.name)}${x.human && !x.isPlayer ? " &#9679;" : ""} <small style="opacity:.6">${x.type.name}</small></td><td>${x.kills}</td><td>${x.deaths}</td></tr>`).join("") + "</table>").join("");
   } else sb.style.display = "none";
+  mpTick();
 }
 
 // ---------------------------------------------------------------- menu showroom: orbit the selected vehicle
@@ -2756,6 +2894,450 @@ function showroom(dt) {
   cam.dir = vnorm(vsub(vadd(c, vscale(right, -r * vw)), cam.pos));
 }
 
+// ---------------------------------------------------------------- online rooms
+// Online play is server-authoritative. The room server (steelfront-server/) runs this same script headless as the
+// authority for the bots, damage, zones, tickets and the end of the battle. Each browser simulates only its own
+// vehicle, exactly as offline (same 120 Hz step, flight model, camera and interpolation), streams it to the server
+// 30 times a second, and draws everyone else from 20 Hz server snapshots played back NET_DELAY behind real time.
+// Shots are traced by the shooter's browser against what that player sees; hits are sent as claims and the server
+// works out the damage from the shooter's vehicle type, then sends the result back to the players involved.
+const NET_DELAY = 0.1, NET_SEND = 1 / 30;
+const NET = { on: false, ready: false, applying: false, ws: null, id: 0, room: null, inbox: [], timed: [], out: [], sendT: 0,
+  clk: { r: 0, latest: -1, recv: 0 }, over: false, overT: 0, overLeft: 0, winner: -1, peers: new Map() };
+const r1 = v => Math.round(v * 10) / 10;
+const rv = (a, d = 2) => { const k = 10 ** d; return a.map(v => Math.round(v * k) / k); };
+const isVec = a => Array.isArray(a) && a.length === 3 && a.every(Number.isFinite);
+const wall = () => performance.now() / 1000;
+// Playback clock for a stream of timestamped samples: runs NET_DELAY behind the newest sample, smoothly.
+function clkPush(c, t) { if (t > c.latest) { if (c.latest < 0) c.r = t - NET_DELAY; c.latest = t; c.recv = wall(); } }
+function clkStep(c, dt) {
+  if (c.latest < 0) return;
+  const target = c.latest + Math.min(wall() - c.recv, 0.5) - NET_DELAY;
+  c.r = Math.abs(target - c.r) > 0.3 ? target : c.r + dt + (target - c.r) * 0.03;
+}
+// movement block shared by snapshots and player updates: pos(3), orientation(6), vel(3), speed, throttle
+const packOri = t => t.type.air ? [...t.Z, ...t.Y] : [t.yaw, ...t.up, t.turretYaw, t.gunElev];
+const packMove = t => [...rv(t.pos, 2), ...rv(packOri(t), 4), ...rv(t.vel, 1), r1(t.speed), Math.round(t.throttle * 100) / 100];
+const readMove = (a, o) => ({ pos: a.slice(o, o + 3), q: a.slice(o + 3, o + 9), vel: a.slice(o + 9, o + 12), speed: a[o + 12], thr: a[o + 13] });
+// Place a vehicle that's driven elsewhere at the current playback time, interpolating between samples.
+function netMoveUnit(t, dt) {
+  const nb = t.nb;
+  if (!nb || !nb.length) return;
+  const c = HEADLESS ? t.clk : NET.clk;
+  if (HEADLESS) clkStep(c, dt);
+  const rt = c.r;
+  while (nb.length > 2 && nb[1].t <= rt) nb.shift();
+  let A = nb[0], B = nb.length > 1 ? nb[1] : A;
+  if (A.life !== B.life) A = B = rt >= B.t ? B : A; // respawned: jump, don't slide across the map
+  const k = B.t > A.t ? clamp((rt - A.t) / (B.t - A.t), 0, 1) : 1, cur = k >= 1 ? B : A;
+  netUnitState(t, cur);
+  if (cur.ty !== t.type.key || cur.life !== t.life) return;
+  let pos = vlerp(A.pos, B.pos, k);
+  if (rt > B.t && B === nb[nb.length - 1] && (B.fl & 1)) pos = vadd(B.pos, vscale(B.vel, Math.min(rt - B.t, 0.15))); // late packet
+  t.pos = pos; t.vel = B.vel.slice(); t.speed = lerp(A.speed, B.speed, k); t.throttle = B.thr;
+  const a = A.q, b = B.q;
+  if (t.type.air) {
+    const Z = vnorm(vlerp(a.slice(0, 3), b.slice(0, 3), k)), X = vnorm(vcross(vlerp(a.slice(3, 6), b.slice(3, 6), k), Z));
+    t.Z = Z; t.X = X; t.Y = vcross(Z, X);
+  } else {
+    t.yaw = wrapA(a[0] + wrapA(b[0] - a[0]) * k); t.up = vnorm(vlerp(a.slice(1, 4), b.slice(1, 4), k));
+    t.turretYaw = wrapA(a[4] + wrapA(b[4] - a[4]) * k); t.gunElev = lerp(a[5], b[5], k);
+  }
+}
+// discrete state that arrives with a movement sample
+function netUnitState(t, s) {
+  if (HEADLESS) { t.firingNow = !!(s.fl & 8); t.bombs = s.bombs; t.rockets = s.rockets; return; }
+  if (s.life !== t.life) { // first sight of this vehicle, or it respawned
+    t.life = s.life; t.type = TYPES[s.ty] || t.type; t.alive = !!(s.fl & 1);
+    t.pop = 0; t.popV = 0; t.deadT = 0; t.crashed = false; t.prev = null; t.recoil = 0; t.smokeT = 0;
+    if (t.type.air) { t.gunT = t.type.guns.map(() => 0); t.gunI = t.type.guns.map(() => 0); }
+  }
+  if (t.alive && !(s.fl & 1)) { NET.applying = true; destroyTank(t, null); NET.applying = false; }
+  t.idle = !!(s.fl & 2); t.firingNow = !!(s.fl & 8); t.human = !!(s.fl & 32);
+  netStats(t, s.u);
+  t.bombs = s.u[29]; t.rockets = s.u[30];
+}
+function netStats(t, u) {
+  t.hp = u[6]; t.kills = u[21]; t.deaths = u[22]; t.caps = u[23];
+  t.trackT = u[24]; t.engineT = u[25]; t.breechT = u[26]; t.fireT = u[27]; t.wingDmg = u[28];
+  t.name = String(u[31]); t.lastHitBy = tanks[u[33]] || null;
+  if (u[3] & 4) t.spottedUntil = now + 0.6;
+}
+// cosmetic upkeep for an aircraft flown elsewhere (tracers, propeller, smoke); the server only burns it
+function netAirUnit(t, dt) {
+  const T = t.type;
+  if (HEADLESS) {
+    if (!t.alive) { t.deadT += dt; return; }
+    if (t.fireT > 0) { t.fireT -= dt; t.hp -= 3.5 * dt; if (t.hp <= 0) destroyTank(t, now - t.lastHitT < 30 ? t.lastHitBy : null); }
+    return;
+  }
+  t.smokeT -= dt;
+  if (!t.alive) {
+    t.deadT += dt;
+    if (t.smokeT <= 0 && t.deadT < 10) { t.smokeT = 0.05; puff(t.pos, [rand(-1, 1), rand(0, 1), rand(-1, 1)], [0.12, 0.11, 0.1], rand(3, 5), rand(1, 2), 0, 0, 2, 0.8); }
+    return;
+  }
+  t.propA += dt * (25 + t.throttle * 45);
+  updateTankMatrices(t);
+  planeGuns(t, dt, t.firingNow);
+  if (t.smokeT <= 0 && (t.hp < T.hp * 0.5 || t.engineT > 0 || t.fireT > 0)) {
+    t.smokeT = 0.05;
+    puff(tp(t.M, [0, 0, T.hit.nose - 1.5]), [rand(-1, 1), rand(0, 1), rand(-1, 1)], t.fireT > 0 ? [0.15, 0.13, 0.12] : [0.5, 0.5, 0.5], rand(2, 3.5), rand(0.6, 1.2), 0, 0, 1.8, 0.6);
+  }
+}
+function knockTree(tr, dir, share = true) {
+  if (tr.falling) return;
+  tr.falling = true; tr.dir = dir;
+  if (!share) return;
+  const i = trees.indexOf(tr), d = Math.round(dir * 1000) / 1000;
+  if (HEADLESS) netEmit({ k: "tree", i, d }); else if (NET.on) netSend({ k: "tree", i, d });
+}
+
+// ---- browser side
+function netSend(ev) { NET.out.push(ev); if (NET.out.length > 200) NET.out.shift(); }
+function netClaim(s, hit) {
+  const c = { k: "hit", w: s.w, st: rv(s.start, 1), p: rv(hit.p, 2), kind: hit.kind };
+  if (hit.kind === "tank") Object.assign(c, { tg: hit.tank.id, part: hit.part, axis: hit.axis, sign: hit.sign, dir: rv(hit.dir, 4), local: rv(hit.local, 2) });
+  netSend(c);
+}
+function netDeploy() {
+  const p = player;
+  p.type = selectedType; spawnTank(p); p.prev = null;
+  cam.sniper = false; cam.rig = false; freeDir = null;
+  cam.yaw = p.team === 0 ? 0 : Math.PI; cam.pitch = p.type.air ? 0 : -0.08;
+}
+// make tank t the one this browser drives
+function netBind(t) {
+  if (player && player !== t && tanks.includes(player)) { player.isPlayer = false; player.ghost = true; player.nb = []; }
+  player = t; t.isPlayer = true; t.ghost = false; t.ai = null; t.nb = null; t.human = true;
+  t.idle = true; t.alive = false; respawnT = 0;
+}
+function netBuild(s) {
+  const mine = s.u.find(u => u[4] === NET.id);
+  if (!mine) return false; // the server hasn't given us a seat yet
+  tanks = s.u.map(u => {
+    const t = makeTank(u[2], TYPES[u[1]] || TYPES.sherman, String(u[31]), false, u[32]);
+    t.id = u[0]; t.ai = null; t.ghost = true; t.life = -1; t.alive = false; t.idle = true; t.nb = [];
+    return t;
+  });
+  netBind(tanks[mine[0]]);
+  player.life = mine[5];
+  NET.ready = true;
+  return true;
+}
+function netOnSnap(s) {
+  clkPush(NET.clk, s.ht);
+  if (!NET.ready && !netBuild(s)) return;
+  tickets = s.tk; battleTime = s.bt; NET.overLeft = s.ov;
+  s.z.forEach(([o, pr, c], i) => { const z = zones[i]; if (!z) return; if (z.owner !== o) zoneChanged(i, o); z.owner = o; z.prog = pr; z.contested = !!c; });
+  for (const u of s.u) {
+    const t = tanks[u[0]];
+    if (!t) continue;
+    if (u[4] === NET.id && t !== player) netBind(t);
+    if (t === player) {
+      if (u[5] > t.life) t.life = u[5]; // the server moved our seat on (we joined, or a new battle started)
+      if (u[5] === t.life) netStats(t, u); // skip while our respawn is still on its way to the server
+      continue;
+    }
+    t.nb.push({ t: s.ht, life: u[5], fl: u[3], ty: u[1], ...readMove(u, 7), u });
+    if (t.nb.length > 40) t.nb.shift();
+  }
+  for (const e of s.e) {
+    if (e.to && e.to !== NET.id) continue;
+    if (e.k === "ui") { if (UI[e.m] && Array.isArray(e.a)) UI[e.m](...e.a); continue; }
+    if (e.k === "sh" && tanks[e.o] === player) continue;
+    if (e.k === "kill" && tanks[e.v] === player) { netApply(e); continue; }
+    NET.timed.push(e);
+  }
+}
+// apply a server event once playback reaches its time, so it lines up with what's on screen
+function netApply(e) {
+  switch (e.k) {
+    case "kill": { const t = tanks[e.v]; if (!t) break; NET.applying = true; destroyTank(t, tanks[e.by] || null, !!e.cr); NET.applying = false; break; }
+    case "sh": {
+      const t = tanks[e.o];
+      if (!t || !t.alive || !isVec(e.p) || !isVec(e.v)) break;
+      if (!addShell(t, e.w, e.p, e.v)) break;
+      if (e.w === "main") muzzleFx(t, e.p, vnorm(e.v)); else if (e.w === "rkt") noiseHit(volAt(e.p) * 0.4, 3000, 500, 0.5);
+      break;
+    }
+    case "tree": { const tr = trees[e.i]; if (tr) knockTree(tr, e.d, false); break; }
+    case "trees": for (const [i, d] of e.l) { const tr = trees[i]; if (tr && !tr.falling) { knockTree(tr, d, false); tr.fall = 1.45; tr.M = chain(trans(tr.x, tr.y, tr.z), rotY(d), rotX(tr.fall), scl(tr.s, tr.s, tr.s)); } } break;
+    case "msg": feed(`<span class="ally">${esc(e.text)}</span>`); break;
+    case "over": NET.over = true; NET.winner = e.w; showMenu("over"); if (locked()) document.exitPointerLock(); break;
+    case "reset": netReset(); break;
+  }
+}
+function netReset() {
+  NET.over = false; NET.winner = -1; shells = []; parts = []; respawnT = 0;
+  for (const t of trees) { t.falling = false; t.fall = 0; t.M = chain(trans(t.x, t.y, t.z), scl(t.s, t.s, t.s)); }
+  $("killfeed").innerHTML = "";
+  player.idle = true; player.alive = false;
+  centerMsg("NEW BATTLE\nPick a vehicle and deploy", "#ffcf5a");
+}
+function netClientPre(dt) {
+  if (NET.inbox.length) for (const s of NET.inbox.splice(0)) netOnSnap(s);
+  clkStep(NET.clk, dt);
+  const r = NET.clk.r, q = NET.timed;
+  if (q.length > 3000) q.splice(0, q.length - 3000).forEach(netApply);
+  for (let i = 0; i < q.length;) { if (q[i].t <= r) netApply(q.splice(i, 1)[0]); else i++; }
+}
+function netClientPost(dt) {
+  NET.sendT -= dt;
+  if (NET.sendT > 0) return;
+  NET.sendT = Math.max(0, NET.sendT + NET_SEND);
+  if (!NET.ready || !NET.ws || NET.ws.readyState !== 1) return;
+  const p = player;
+  const st = [Math.round(now * 1000) / 1000, p.life, (p.alive ? 1 : 0) | (p.idle ? 2 : 0) | (p.alive && p.firingNow ? 8 : 0), ...packMove(p), p.bombs, p.rockets, p.type.key];
+  NET.ws.send(JSON.stringify({ t: "in", d: { st, e: NET.out } }));
+  NET.out = [];
+}
+
+// ---- room server side (HEADLESS)
+function netEmit(ev) {
+  if (!HEADLESS) return;
+  if (ev.t === undefined) ev.t = Math.round(now * 1000) / 1000;
+  NET.out.push(ev);
+  if (NET.out.length > 4000) NET.out.shift();
+}
+const SEAT_ORDER = [3, 2, 4, 1, 5, 0, 6];
+// a player joins: they take over a bot's seat (pref: 0 / 1 for a team, anything else to balance)
+function hostAddPeer(id, name, pref) {
+  const humans = team => tanks.filter(t => t.team === team && t.remote).length;
+  let team = pref === 0 || pref === 1 ? pref : humans(0) <= humans(1) ? 0 : 1;
+  if (humans(team) >= TEAM_SIZE) team = 1 - team;
+  if (humans(team) >= TEAM_SIZE) return -1;
+  const t = SEAT_ORDER.map(s => tanks.find(x => x.team === team && x.slot === s)).find(x => x && !x.remote);
+  t.botName = t.botName || t.name;
+  Object.assign(t, { remote: true, human: true, owner: id, ai: null, name, kills: 0, deaths: 0, caps: 0, alive: false, idle: true, firingNow: false, nb: [], clk: { r: 0, latest: -1, recv: 0 } });
+  t.life++;
+  NET.peers.set(id, t);
+  netEmit({ k: "msg", text: `${name} joined` });
+  const l = [];
+  trees.forEach((tr, i) => { if (tr.falling) l.push([i, Math.round(tr.dir * 1000) / 1000]); });
+  if (l.length) netEmit({ k: "trees", to: id, l });
+  return t.id;
+}
+// a player leaves: a bot takes their seat back
+function hostRemovePeer(id) {
+  const t = NET.peers.get(id);
+  if (!t) return;
+  NET.peers.delete(id);
+  netEmit({ k: "msg", text: `${t.name} left` });
+  Object.assign(t, { remote: false, human: false, owner: 0, ai: makeAI(), name: t.botName, nb: null, firingNow: false });
+  if (t.idle) spawnTank(t);
+}
+function hostInput(id, d) {
+  const t = NET.peers.get(id);
+  if (!t || !d || typeof d !== "object") return;
+  for (const e of Array.isArray(d.e) ? d.e.slice(0, 64) : []) if (e && typeof e === "object") hostEvent(t, e);
+  const st = d.st;
+  if (!Array.isArray(st) || st.length !== 20 || !st.slice(0, 19).every(Number.isFinite) || (st[1] | 0) !== t.life) return;
+  const m = readMove(st, 3);
+  m.pos = [clamp(m.pos[0], -OUTER, OUTER), clamp(m.pos[1], -200, 5000), clamp(m.pos[2], -OUTER, OUTER)];
+  m.thr = clamp(m.thr, 0, 1);
+  t.nb.push({ t: st[0], life: st[1] | 0, fl: st[2] | 0, ty: st[19], bombs: st[17] | 0, rockets: st[18] | 0, ...m });
+  clkPush(t.clk, st[0]);
+  if (t.nb.length > 40) t.nb.shift();
+}
+function hostEvent(t, e) {
+  switch (e.k) {
+    case "spawn": {
+      const T = typeof e.ty === "string" && Object.hasOwn(TYPES, e.ty) ? TYPES[e.ty] : null;
+      if (!T || t.alive || !((e.life | 0) > t.life) || (!t.idle && t.deadT < 5)) return;
+      Object.assign(t, { type: T, life: e.life | 0, alive: true, idle: false, hp: T.hp, deadT: 0, trackT: 0, engineT: 0, breechT: 0, fireT: 0, wingDmg: 0,
+        crashed: false, lastHitBy: null, pop: 0, popV: 0, spottedUntil: 0, nb: [], mag: T.auto ? T.auto.mag : 0,
+        bombs: T.bombs ? T.bombs.n : 0, rockets: T.rockets ? T.rockets.n : 0 });
+      if (T.air) { t.gunT = T.guns.map(() => 0); t.gunI = T.guns.map(() => 0); }
+      return;
+    }
+    case "sh":
+      if (t.alive && isVec(e.p) && isVec(e.v) && weaponShell(t, e.w) && vlen(vsub(e.p, t.pos)) < 80)
+        netEmit({ k: "sh", o: t.id, w: e.w, p: e.p, v: e.v, t: Math.round((now + NET_DELAY) * 1000) / 1000 });
+      return;
+    case "hit": hostClaim(t, e); return;
+    case "crash": if (t.alive && t.type.air) { destroyTank(t, now - t.lastHitT < 15 ? t.lastHitBy : null, true); t.crashed = true; } return;
+    case "tree": { const tr = trees[e.i | 0]; if (tr && Number.isFinite(e.d)) knockTree(tr, e.d); return; }
+  }
+}
+const HIT_PARTS = ["hull", "turret", "fuselage", "wing", "tail", "engine"];
+// A player's shot hit something on their screen. Damage is worked out here from the shooter's weapon;
+// the claim is only accepted if the target is roughly where the server has it.
+function hostClaim(t, c) {
+  if (!isVec(c.p) || !isVec(c.st) || vlen(vsub(c.p, c.st)) > 6000) return;
+  const s = weaponShell(t, c.w);
+  if (!s) return;
+  Object.assign(s, { w: c.w, owner: t, start: c.st, p: c.p, v: [0, 0, 0] });
+  let hit;
+  if (c.kind === "tank") {
+    const tg = tanks[c.tg | 0];
+    if (!tg || tg === t || tg.idle || !isVec(c.dir) || !isVec(c.local) || !HIT_PARTS.includes(c.part)) return;
+    if (vlen(vsub(c.p, tg.pos)) > tg.type.rad + 15 + vlen(tg.vel) * 0.5) return;
+    hit = { kind: "tank", tank: tg, part: c.part, axis: clamp(c.axis | 0, 0, 2), sign: c.sign < 0 ? -1 : 1, dir: vnorm(c.dir), local: c.local, p: c.p, t: 0 };
+  } else if (s.he && (c.kind === "ground" || c.kind === "building")) hit = { kind: c.kind, p: c.p, t: 0 };
+  else return;
+  impact(s, hit);
+}
+function netHostPost(dt) {
+  if (!NET.over && (tickets[0] <= 0 || tickets[1] <= 0)) {
+    NET.over = true; NET.overT = 15;
+    NET.winner = tickets[1] <= 0 && tickets[0] > 0 ? 0 : tickets[0] <= 0 && tickets[1] > 0 ? 1 : tickets[0] >= tickets[1] ? 0 : 1;
+    netEmit({ k: "over", w: NET.winner });
+  } else if (NET.over && (NET.overT -= dt) <= 0) hostReset();
+}
+// next battle in the same room: same players, fresh tickets; players redeploy from the menu
+function hostReset() {
+  NET.over = false; NET.winner = -1; battleTime = 0; tickets = [START_TICKETS, START_TICKETS]; ticketAcc = 0;
+  zones = ZONE_POS.map(() => ({ owner: -1, prog: 0, contested: false }));
+  shells = [];
+  for (const t of trees) { t.falling = false; t.fall = 0; t.M = chain(trans(t.x, t.y, t.z), scl(t.s, t.s, t.s)); }
+  for (const t of tanks) {
+    t.kills = t.deaths = t.caps = 0;
+    if (t.remote) { t.alive = false; t.idle = true; t.life++; t.nb = []; } else spawnTank(t);
+  }
+  netEmit({ k: "reset" });
+}
+function hostSnapshot() {
+  const u = tanks.map(t => [t.id, t.type.key, t.team,
+    (t.alive ? 1 : 0) | (t.idle ? 2 : 0) | (t.spottedUntil > now ? 4 : 0) | (t.alive && t.firingNow ? 8 : 0) | (t.remote ? 32 : 0),
+    t.owner || 0, t.life, r1(t.hp), ...packMove(t), t.kills, t.deaths, t.caps, r1(t.trackT), r1(t.engineT), r1(t.breechT || 0), r1(t.fireT),
+    Math.round(t.wingDmg * 100) / 100, t.bombs, t.rockets, t.name, t.slot, t.lastHitBy ? t.lastHitBy.id : -1]);
+  const e = NET.out;
+  NET.out = [];
+  return { ht: Math.round(now * 1000) / 1000, bt: Math.round(battleTime), tk: tickets.slice(), z: zones.map(z => [z.owner, Math.round(z.prog * 1000) / 1000, z.contested ? 1 : 0]), ov: NET.over ? Math.ceil(NET.overT) : 0, u, e };
+}
+
+// ---- lobby (browser)
+const store = (() => { try { return window.localStorage; } catch (e) { return null; } })();
+let lobbyOpen = false;
+const mpStatus = text => { $("mpStatus").textContent = text; };
+function wsUrl(s) {
+  s = s.trim() || (/^https?:$/.test(location.protocol) ? location.host : "localhost:8080");
+  if (!/^[a-z]+:\/\//i.test(s)) s = (location.protocol === "https:" ? "wss://" : "ws://") + s;
+  const u = new URL(s.replace(/^http/i, "ws"));
+  if (u.pathname === "/") u.pathname = "/ws";
+  return u.href;
+}
+// refresh the online part of the menu
+function mpPanel() {
+  if (HEADLESS) return;
+  const room = NET.on, lobby = lobbyOpen && !room;
+  $("panel").classList.toggle("lobby", lobby);
+  $("mpLobby").style.display = lobby ? "" : "none";
+  $("mpOpen").style.display = !lobby && !room ? "" : "none";
+  $("mpRoom").style.display = room ? "" : "none";
+  $("download").style.display = $("dlHint").style.display = room ? "none" : "";
+  if (lobby) $("title").textContent = "ONLINE ROOMS";
+  if (room) {
+    $("mpRoomCode").textContent = NET.room.code;
+    const invite = /^https?:$/.test(location.protocol) ? `${location.origin}${location.pathname}?room=${NET.room.code}` : `room code ${NET.room.code}`;
+    $("mpInvite").textContent = `Invite friends: ${invite}`;
+  }
+}
+// per-frame updates of the menu while online
+function mpTick() {
+  if (!NET.on || overlay.style.display === "none") return;
+  const humans = tanks.filter(t => t.human).length;
+  $("mpRoomInfo").textContent = `${NET.room.name} · ${humans} player${humans === 1 ? "" : "s"} · ${NET.ready ? `you're on team ${["Olive", "Sand"][player.team]}` : "joining…"}`;
+  const b = $("play");
+  b.disabled = !NET.ready || NET.over;
+  if (!NET.ready) b.textContent = "Joining…";
+  else if (NET.over) b.textContent = `Next battle in ${NET.overLeft} s`;
+  else b.textContent = state === "paused" ? "Resume" : "Deploy";
+}
+const mpName = () => ($("mpName").value.trim() || "Player").slice(0, 16);
+// (re)send our name first: the lobby may have connected before it was typed in
+function mpHello() { const name = mpName(); if (store) store.setItem("sfName", name); return mpSend({ t: "hello", name }); }
+function mpConnect(then) {
+  const name = mpName();
+  let url;
+  try { url = wsUrl($("mpServer").value); } catch (e) { mpStatus("That server address doesn't look right."); return; }
+  if (store) { store.setItem("sfName", name); store.setItem("sfServer", $("mpServer").value.trim()); }
+  if (NET.ws) { const old = NET.ws; NET.ws = null; old.close(); }
+  mpStatus(`Connecting to ${url}…`);
+  let ws;
+  try { ws = new WebSocket(url); } catch (e) { mpStatus("That server address doesn't look right."); return; }
+  NET.ws = ws;
+  ws.onopen = () => ws.send(JSON.stringify({ t: "hello", name }));
+  ws.onmessage = ev => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.t === "s") { if (NET.on) { NET.inbox.push(m.d); if (NET.inbox.length > 60) NET.timed.push(...NET.inbox.shift().e); } }
+    else if (m.t === "welcome") { NET.id = m.id; mpStatus(`Connected to ${url}`); if (then) then(); else ws.send(JSON.stringify({ t: "list" })); then = null; }
+    else if (m.t === "rooms") mpRooms(m.rooms);
+    else if (m.t === "joined") mpEnter(m);
+    else if (m.t === "error") mpStatus(m.msg);
+  };
+  ws.onclose = () => {
+    if (NET.ws !== ws) return;
+    NET.ws = null;
+    const was = NET.on;
+    if (was) { lobbyOpen = true; mpLeft(); }
+    mpStatus(was ? "Disconnected from the server." : `Couldn't connect to ${url}. Is the room server running?`);
+  };
+}
+const mpSend = m => { if (NET.ws && NET.ws.readyState === 1) { NET.ws.send(JSON.stringify(m)); return true; } return false; };
+const mpTeam = () => { const v = $("mpTeam").value; return v === "0" ? 0 : v === "1" ? 1 : -1; };
+function mpJoin(code) {
+  code = String(code || "").trim().toUpperCase();
+  if (!code) { mpStatus("Enter a room code."); return; }
+  const go = () => mpSend({ t: "join", code, team: mpTeam() });
+  if (mpHello()) go(); else mpConnect(go);
+}
+function mpCreate() {
+  const go = () => mpSend({ t: "create", name: $("mpRoomName").value.trim(), priv: $("mpPrivate").checked, team: mpTeam() });
+  if (mpHello()) go(); else mpConnect(go);
+}
+function mpRooms(list) {
+  $("mpRooms").innerHTML = list.length
+    ? list.map(r => `<div class="room"><b>${esc(r.name)}</b><span>${r.n}/${r.max} players · ${esc(r.code)}</span><button data-code="${esc(r.code)}">Join</button></div>`).join("")
+    : `<p class="hint">No public rooms yet. Create one!</p>`;
+}
+function mpEnter(m) {
+  NET.room = { code: m.code, name: m.room }; NET.on = true; NET.ready = false; NET.over = false; NET.winner = -1;
+  NET.inbox = []; NET.timed = []; NET.out = []; NET.clk = { r: 0, latest: -1, recv: 0 };
+  seed = m.seed | 0; generateWorld(); preview = null;
+  shells = []; parts = []; tanks = []; tickets = [START_TICKETS, START_TICKETS];
+  zones = ZONE_POS.map(() => ({ owner: -1, prog: 0, contested: false }));
+  player = makeTank(0, selectedType, m.name, true, 3); player.idle = true; player.alive = false;
+  $("killfeed").innerHTML = "";
+  lobbyOpen = false;
+  if (/^https?:$/.test(location.protocol)) history.replaceState(null, "", `?room=${m.code}`);
+  showMenu("start");
+}
+function mpLeft() {
+  if (!NET.on) { mpPanel(); return; }
+  NET.on = false; NET.ready = false; NET.room = null; NET.over = false; NET.inbox = []; NET.timed = [];
+  if (locked()) document.exitPointerLock();
+  if (/^https?:$/.test(location.protocol)) history.replaceState(null, "", location.pathname);
+  newBattle(); preview = null;
+  showMenu("start");
+}
+if (!HEADLESS) {
+  $("mpName").value = (store && store.getItem("sfName")) || "";
+  $("mpServer").value = (store && store.getItem("sfServer")) || (/^https?:$/.test(location.protocol) ? location.host : "");
+  $("mpServer").placeholder = /^https?:$/.test(location.protocol) ? location.host : "server address, e.g. localhost:8080";
+  $("mpOpen").addEventListener("click", () => { lobbyOpen = true; mpPanel(); if (!mpSend({ t: "list" })) mpConnect(); });
+  $("mpClose").addEventListener("click", () => { lobbyOpen = false; showMenu(state === "menu" ? "start" : state); });
+  $("mpConnect").addEventListener("click", () => mpConnect());
+  $("mpRefresh").addEventListener("click", () => { if (!mpSend({ t: "list" })) mpConnect(); });
+  $("mpCreate").addEventListener("click", mpCreate);
+  $("mpJoin").addEventListener("click", () => mpJoin($("mpCode").value));
+  $("mpCode").addEventListener("keydown", e => { if (e.key === "Enter") mpJoin($("mpCode").value); });
+  $("mpRooms").addEventListener("click", e => { const c = e.target.dataset && e.target.dataset.code; if (c) mpJoin(c); });
+  $("mpLeave").addEventListener("click", () => { mpSend({ t: "leave" }); lobbyOpen = true; mpLeft(); mpSend({ t: "list" }); });
+  // invite links: ?room=CODE opens the lobby and joins right away when we already know the player's name
+  const inviteCode = new URLSearchParams(location.search).get("room");
+  if (inviteCode) {
+    lobbyOpen = true; $("mpCode").value = inviteCode.toUpperCase().slice(0, 8);
+    if ($("mpName").value) mpJoin(inviteCode); else mpStatus("Enter your name, then press Join to enter the room.");
+  }
+}
+// the map as data, to check that browsers and the room server build the same one from a seed
+const worldDigest = () => ({ seed, buildings: buildings.map(b => [...b.mn, ...b.mx]), trees: trees.map(t => [t.x, t.z, t.s]), zones: ZONE_POS.map(z => z[1]) });
+if (HEADLESS) window.steelFrontHost = { addPeer: hostAddPeer, removePeer: hostRemovePeer, input: hostInput, tick: dt => { simulate(dt); }, snapshot: hostSnapshot,
+  info: () => ({ players: NET.peers.size, tickets: tickets.slice(), time: battleTime }), world: worldDigest, get tanks() { return tanks; } };
+
 // ---------------------------------------------------------------- main loop
 generateWorld();
 newBattle();
@@ -2770,10 +3352,11 @@ function snapshotTransforms() {
 }
 function simulate(dt) {
   simAcc = Math.min(simAcc + dt, SIM_DT * MAX_STEPS);
-  while (simAcc >= SIM_DT && state === "playing") {
+  // online the battle never pauses: menus and the pause screen just sit on top of it
+  while (simAcc >= SIM_DT && (state === "playing" || NET.on || HEADLESS)) {
     simAcc -= SIM_DT;
-    snapshotTransforms();
-    const wasAlive = player.alive;
+    if (!HEADLESS) snapshotTransforms();
+    const wasAlive = player && player.alive;
     step(SIM_DT);
     if (wasAlive && !player.alive) respawnT = 6;
   }
@@ -2810,11 +3393,11 @@ function advance(dt) {
 }
 function frame(t) {
   const dt = Math.min(0.05, (t - last) / 1000); last = t;
-  if (state === "playing") advance(dt);
+  if (state === "playing" || (NET.on && state !== "menu")) advance(dt);
   else if (state === "menu") {
-    now += dt;
+    if (NET.on) applyInterp(simulate(dt)); else now += dt;
     showroom(dt);
-    for (const tk of tanks) updateTankMatrices(tk);
+    if (!NET.on) for (const tk of tanks) updateTankMatrices(tk);
   }
   render();
   drawHud();
@@ -2827,7 +3410,8 @@ requestAnimationFrame(frame);
 // small hook for automated testing / tinkering from the console
 window.steelFront = { get player() { return player; }, get tanks() { return tanks; }, get shells() { return shells; }, cam, step,
   advance: dt => { const r = advance(dt); restoreSim(); return r; }, SIM_DT, fire: () => fire(player), get state() { return state; },
-  select: k => { selectedType = TYPES[k]; menuTab = selectedType.air ? "air" : "ground"; buildCards(); }, TYPES, dropBomb: () => dropBomb(player), fireRockets: () => fireRockets(player) };
+  select: k => { selectedType = TYPES[k]; menuTab = selectedType.air ? "air" : "ground"; buildCards(); }, TYPES, dropBomb: () => dropBomb(player), fireRockets: () => fireRockets(player),
+  world: () => worldDigest(), regen: s => { seed = s | 0; generateWorld(); }, net: NET };
 </script>
 </body>
 </html>

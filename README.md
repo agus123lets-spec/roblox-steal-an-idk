@@ -85,3 +85,7 @@ tests/      logic.spec.luau (game math, config, map), place.spec.luau (built pla
 ## Roadmap (not in this first version)
 
 Rebirths, pet fusion, a Pet Index screen, co-op boss heists, base decoration, weekly events, and Robux items (cosmetics, a 2x coins pass and a season pass). See the game plan for details.
+
+## Steel Front (browser game)
+
+`steelfront.html` is a separate, single-file 3D tank and aircraft battle. Open it in a browser to play offline against bots. For online rooms with friends, run the room server in [`steelfront-server/`](steelfront-server/README.md) (`npm install && npm start`) and open the address it prints.
