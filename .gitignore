@@ -4,3 +4,4 @@ sourcemap.json
 *.rbxl.lock
 *.rbxlx.lock
 .DS_Store
+node_modules/
