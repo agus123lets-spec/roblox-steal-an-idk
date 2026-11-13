@@ -1467,7 +1467,7 @@ function makeTank(team, type, name, isPlayer, slot) {
     turretYaw: 0, gunElev: 0, hp: type.hp, reloadT: 0, alive: true, deadT: 0, trackT: 0, engineT: 0, recoil: 0, pop: 0, popV: 0,
     kills: 0, deaths: 0, caps: 0, spottedUntil: 0, smokeT: 0, dustT: 0, M: mat(), TM: mat(), GM: mat(), lastHitBy: null, lastHitT: -99,
     throttle: 1, sink: 0, pr: 0, rr: 0, yr: 0, bombs: 0, rockets: 0, rearmT: 0, rocketT: 0, gunT: [], gunI: [], fireT: 0, wingDmg: 0, crashed: false, propA: 0, rearT: 0, mag: 0, mzI: 0, gunSnd: 0,
-    ai: isPlayer ? null : { phase: "approach", phaseT: 0, air: null, ground: null, groundT: 0, think: 0, target: null, goal: null, goalZone: -1, err: [0, 0, 0], fireDelay: 1, stuck: 0, rev: 0, revSteer: 1, pref: ZONE_POS.map(() => rand(0, 250)) } };
+    ai: isPlayer ? null : { phase: "approach", phaseT: 0, air: null, ground: null, groundT: 0, think: 0, target: null, goal: null, goalZone: -1, err: [0, 0, 0], off: null, leadK: 1, fireDelay: 1, stuck: 0, rev: 0, revSteer: 1, pref: ZONE_POS.map(() => rand(0, 250)) } };
 }
 function spawnTank(t) {
   const base = BASES[t.team], dir = t.team === 0 ? 1 : -1;
@@ -1654,7 +1654,7 @@ function updateShells(dt) {
     s.life -= dt;
     const hit = trace(p0, p1, s.owner);
     if (hit) { impact(s, hit); shells.splice(i, 1); continue; }
-    s.p = p1;
+    s.pp = p0; s.p = p1;
     if (s.life <= 0 || Math.abs(p1[0]) > OUTER || Math.abs(p1[2]) > OUTER) shells.splice(i, 1);
   }
 }
@@ -1777,6 +1777,19 @@ function updateZones(dt) {
 }
 
 // ---------------------------------------------------------------- AI
+// Bots don't get perfect aim: a smoothly wandering aim offset that grows with range (metres at the
+// target) and a lead estimate that's only roughly right. k scales the error for each weapon.
+function botAim(ai, dist, dt, k) {
+  ai.offT = (ai.offT || 0) - dt;
+  if (ai.offT <= 0 || !ai.offGoal) {
+    ai.offT = rand(0.5, 1.2);
+    const r = (3 + dist * 0.02) * k;
+    ai.offGoal = [rand(-1, 1) * r, rand(-1, 1) * r * 0.8, rand(-1, 1) * r];
+    ai.leadK = rand(0.7, 1.2);
+  }
+  ai.off = ai.off ? vlerp(ai.off, ai.offGoal, 1 - Math.exp(-dt * 2.5)) : ai.offGoal.slice();
+  return ai.off;
+}
 function updateAI(t, dt, now) {
   const ai = t.ai, T = t.type;
   ai.think -= dt; ai.fireDelay -= dt;
@@ -1798,7 +1811,12 @@ function updateAI(t, dt, now) {
       const d = vlen(vsub(e.pos, t.pos));
       if (d < bd && los(eye, center(e))) { best = e; bd = d; }
     }
-    if (best) { best.spottedUntil = now + 2.5; if (best !== ai.target) ai.fireDelay = Math.max(ai.fireDelay, rand(0.8, 2.0)); }
+    if (best && best !== ai.target) {
+      ai.fireDelay = Math.max(ai.fireDelay, rand(0.8, 2.0));
+      const d = vlen(vsub(best.pos, t.pos));
+      ai.err = [rand(-1, 1) * d * 0.012, rand(-0.6, 1) * d * 0.008, rand(-1, 1) * d * 0.012];
+    }
+    if (best) best.spottedUntil = now + 2.5;
     ai.target = best;
     let bz = -1, bs = 1e9;
     zones.forEach((z, zi) => {
@@ -1813,15 +1831,18 @@ function updateAI(t, dt, now) {
   }
   const tgt = ai.target && ai.target.alive ? ai.target : null;
   let aim;
-  if (tgt) {
-    const c = center(tgt), tof = vlen(vsub(c, t.pos)) / T.v0 * (tgt.type.air ? 1.1 : 1);
+  if (tgt && tgt.type.air) {
+    const c = center(tgt), d = vlen(vsub(c, t.pos)), tof = d / T.v0 * 1.1, off = botAim(ai, d, dt, 0.5);
+    aim = vadd(vadd(c, vscale(tgt.vel, tof * ai.leadK)), off);
+  } else if (tgt) {
+    const c = center(tgt), tof = vlen(vsub(c, t.pos)) / T.v0;
     aim = vadd(vadd(c, vscale(tgt.vel, tof)), ai.err);
   } else {
     const f = [Math.sin(t.yaw), 0, Math.cos(t.yaw)];
     aim = vadd(t.pos, [f[0] * 60, 2.5, f[2] * 60]);
   }
   const err = aimTurret(t, aim, dt);
-  if (tgt && T.auto) { if (t.reloadT <= 0 && err < (tgt.type.air ? 0.09 : 0.03) && vlen(vsub(tgt.pos, t.pos)) < 1100) fire(t); }
+  if (tgt && T.auto) { if (t.reloadT <= 0 && ai.fireDelay <= 0 && err < (tgt.type.air ? 0.09 : 0.03) && vlen(vsub(tgt.pos, t.pos)) < (tgt.type.air ? 1000 : 1100)) fire(t); }
   else if (tgt && t.reloadT <= 0 && ai.fireDelay <= 0 && err < 0.025) {
     fire(t);
     const d = vlen(vsub(tgt.pos, t.pos));
@@ -1863,7 +1884,7 @@ function spawnPlane(t) {
   t.speed = T.vmax * 0.85; t.throttle = 1; t.vel = vscale(t.Z, t.speed); t.sink = 0; t.pr = t.rr = t.yr = 0;
   t.bombs = T.bombs ? T.bombs.n : 0; t.rockets = T.rockets ? T.rockets.n : 0; t.rearmT = 0; t.rocketT = 0;
   t.gunT = T.guns.map(() => 0); t.gunI = T.guns.map(() => 0); t.engineT = 0; t.propA = 0; t.rearT = 0;
-  if (t.ai) { t.ai.phase = "approach"; t.ai.air = null; t.ai.ground = null; t.ai.err = [0, 0, 0]; }
+  if (t.ai) { t.ai.phase = "approach"; t.ai.air = null; t.ai.ground = null; t.ai.err = [0, 0, 0]; t.ai.off = null; t.ai.acqT = rand(1, 2); }
 }
 function rotPlane(t, pitch, roll, yaw) {
   let X = t.X, Y = t.Y, Z = t.Z, c, s;
@@ -2001,16 +2022,19 @@ function planeImpact(s, hit) {
 }
 function rearGunner(t, dt) {
   t.rearT -= dt; if (t.rearT > 0) return;
-  let best = null, bd = 650;
+  let best = null, bd = 550;
   for (const e of tanks) {
     if (!e.alive || e.team === t.team || !e.type.air) continue;
     const r = vsub(e.pos, t.pos), d = vlen(r);
     if (d < bd && vdot(t.Z, vscale(r, 1 / d)) < 0.25) { bd = d; best = e; }
   }
-  if (!best) { t.rearT = 0.35; return; }
-  t.rearT = 0.11;
-  const m = tp(t.M, [0, 1.3, -2.6]), tof = bd / 860, aim = vadd(best.pos, vscale(vsub(best.vel, t.vel), tof));
-  const d = vnorm(vadd(vnorm(vsub(aim, m)), [rand(-1, 1) * 0.014, rand(-1, 1) * 0.014, rand(-1, 1) * 0.014]));
+  if (!best) { t.rearT = 0.35; t.rearTgt = null; return; }
+  // the gunner needs a moment to pick up a new target, then fires bursts with pauses in between
+  if (best !== t.rearTgt) { t.rearTgt = best; t.rearN = 0; t.rearT = rand(0.8, 1.5); return; }
+  if (!t.rearN) { t.rearN = 8 + ((Math.random() * 8) | 0); t.rearLead = rand(0.6, 1.25); t.rearOff = [rand(-1, 1), rand(-1, 1), rand(-1, 1)].map(v => v * (2 + bd * 0.012)); }
+  t.rearT = --t.rearN > 0 ? 0.11 : rand(0.8, 1.6);
+  const m = tp(t.M, [0, 1.3, -2.6]), tof = bd / 860, aim = vadd(vadd(best.pos, vscale(vsub(best.vel, t.vel), tof * t.rearLead)), t.rearOff);
+  const d = vnorm(vadd(vnorm(vsub(aim, m)), [rand(-1, 1) * 0.03, rand(-1, 1) * 0.03, rand(-1, 1) * 0.03]));
   shells.push({ kind: "bullet", small: true, p: m, v: vadd(vscale(d, 860), t.vel), owner: t, pen: 20, dmg: 1.6, life: 1.6, start: m, col: t.type.tracer });
 }
 // per-frame aircraft upkeep shared by the player and AI pilots
@@ -2061,20 +2085,25 @@ function updateAirAI(t, dt) {
     ai.think = rand(0.25, 0.45);
     let best = null, bd = T.role === "attacker" ? 500 : 2600;
     for (const e of tanks) if (e.team !== t.team && e.alive && e.type.air) { const d = vlen(vsub(e.pos, t.pos)); if (d < bd) { bd = d; best = e; } }
+    if (best && best !== ai.air) ai.acqT = rand(1.0, 1.8); // reaction time before opening fire on a new target
     ai.air = best;
     if (!ai.air && (!ai.ground || !ai.ground.alive || ai.groundT <= 0)) {
       const cands = tanks.filter(e => e.team !== t.team && e.alive && !e.type.air);
       cands.sort((a, b) => dist2d(a.pos, t.pos) - dist2d(b.pos, t.pos));
       ai.ground = cands[(Math.random() * Math.min(3, cands.length)) | 0] || null; ai.groundT = 30;
     }
-    ai.err = [rand(-1, 1) * 2, rand(-1, 1) * 1.5, rand(-1, 1) * 2];
   }
+  ai.acqT = (ai.acqT || 0) - dt;
+  // trigger discipline: short bursts with pauses instead of a continuous stream
+  ai.burstT = (ai.burstT || 0) - dt;
+  if (ai.burstT <= -(ai.coolT || 0)) { ai.burstT = rand(0.5, 1.1); ai.coolT = rand(0.4, 1.0); }
+  const trigger = ai.burstT > 0 && ai.acqT <= 0;
   let D = vnorm([t.Z[0], 0, t.Z[2]]), fire = false;
   if (ai.air && ai.air.alive) {
-    const e = ai.air, d = vlen(vsub(e.pos, t.pos)), tof = d / g0.v0;
-    const aim = vadd(vadd(e.pos, vscale(vsub(e.vel, t.vel), tof)), ai.err);
+    const e = ai.air, d = vlen(vsub(e.pos, t.pos)), tof = d / g0.v0, off = botAim(ai, d, dt, 0.4);
+    const aim = vadd(vadd(e.pos, vscale(vsub(e.vel, t.vel), tof * ai.leadK)), off);
     D = vnorm(vsub(aim, t.pos));
-    fire = d < 700 && vdot(t.Z, D) > Math.cos(0.035);
+    fire = trigger && d < 650 && vdot(t.Z, D) > Math.cos(0.035);
     if (fire) e.spottedUntil = now + 2;
   } else if (ai.ground && ai.ground.alive) {
     const e = ai.ground, gpos = e.pos, hd = dist2d(gpos, t.pos), agl = t.pos[1] - heightAt(t.pos[0], t.pos[2]);
@@ -2082,10 +2111,10 @@ function updateAirAI(t, dt) {
       D = vnorm([gpos[0] - t.pos[0], gpos[1] + 380 - t.pos[1], gpos[2] - t.pos[2]]);
       if (hd < 1100 && hd > 450 && agl > 220) ai.phase = "dive";
     } else if (ai.phase === "dive") {
-      const d = vlen(vsub(gpos, t.pos)), tof = d / g0.v0, aim = vadd(vadd(gpos, [0, 1, 0]), vscale(e.vel, tof));
+      const d = vlen(vsub(gpos, t.pos)), tof = d / g0.v0, off = botAim(ai, d, dt, 0.25), aim = vadd(vadd(vadd(gpos, [0, 1, 0]), vscale(e.vel, tof * ai.leadK)), off);
       D = vnorm(vsub(aim, t.pos));
       const on = vdot(t.Z, D);
-      if (d < 800 && on > Math.cos(0.04)) { fire = true; e.spottedUntil = now + 3; }
+      if (d < 800 && on > Math.cos(0.04) && ai.burstT > 0) { fire = true; e.spottedUntil = now + 3; }
       if (t.rockets > 0 && d < 650 && on > Math.cos(0.025)) fireRockets(t);
       if (t.bombs > 0 && dist2d(bombImpact(t.pos, t.vel), gpos) < 18) dropBomb(t);
       if (agl < 130 || d < 200) { ai.phase = "extend"; ai.phaseT = rand(6, 9); }
@@ -2187,6 +2216,8 @@ $("tabAir").addEventListener("click", () => { menuTab = "air"; if (!selectedType
 // ---------------------------------------------------------------- game state
 let state = "menu", battleTime = 0, now = 0, spotT = 0;
 let respawnT = 0;
+const SIM_DT = 1 / 120, MAX_STEPS = 8; // fixed simulation step (s); see frame()
+let simAcc = 0;
 const cam = { pos: [0, 30, -460], dir: [0, 0, 1], fov: 1.1, yaw: 0, pitch: -0.12, dist: 13, adist: 16, sniper: false, zoom: 0, aim: [0, 0, 0], aimDist: 0 };
 let VP = mat();
 
@@ -2205,7 +2236,7 @@ function newBattle() {
     tanks.push(makeTank(team, pickType(s), names.pop(), false, s));
   }
   tanks.forEach(spawnTank);
-  cam.yaw = 0; cam.pitch = -0.08; cam.sniper = false;
+  cam.yaw = 0; cam.pitch = -0.08; cam.sniper = false; cam.rig = false; simAcc = 0;
   $("killfeed").innerHTML = "";
   $("zones").innerHTML = ZONE_POS.map((_, i) => `<div class="zone" id="z${i}"><b>${"ABC"[i]}</b></div>`).join("");
   centerMsg("BATTLE START\nCapture zones A · B · C", "#ffcf5a");
@@ -2301,17 +2332,31 @@ window.addEventListener("resize", resize);
 resize();
 
 // ---------------------------------------------------------------- simulation step
-function updateCamera() {
-  const look = [Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)];
+// Runs once per rendered frame, after the simulation, on the interpolated transforms (see frame()).
+// Placing the camera before the aircraft moved made the plane jump by vel·dt on screen whenever the
+// frame time changed. The aircraft rig is also smoothed (frame-rate independent) so rolls, zoom
+// steps and death/respawn don't jerk the view.
+const camLook = () => [Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)];
+function updateCamera(dt = 0) {
+  const look = camLook();
   const t = player;
   if (t.type.air) {
-    const pivot = vadd(t.pos, vscale(t.alive ? t.Y : [0, 1, 0], 1.6));
-    cam.pos = vsub(pivot, vscale(look, t.alive ? cam.adist + t.type.L * 0.55 : 40));
+    const k = cam.rig ? 1 - Math.exp(-dt * 6) : 1, wantDist = t.alive ? cam.adist + t.type.L * 0.55 : 40;
+    // the pivot sits above the aircraft; follow its up vector loosely so a roll doesn't swing the camera around
+    const upT = t.alive ? t.Y : [0, 1, 0];
+    cam.up = cam.rig ? vnorm(vlerp(cam.up, upT, k)) : upT.slice();
+    if (!vlen(cam.up) || Number.isNaN(cam.up[0])) cam.up = [0, 1, 0];
+    cam.distS = cam.rig ? lerp(cam.distS, wantDist, k) : wantDist;
+    cam.fovS = cam.rig ? lerp(cam.fovS, cam.sniper ? 0.5 : 1.15, 1 - Math.exp(-dt * 12)) : cam.sniper ? 0.5 : 1.15;
+    cam.rig = true;
+    const pivot = vadd(t.pos, vscale(cam.up, 1.6));
+    cam.pos = vsub(pivot, vscale(look, cam.distS));
     cam.pos[1] = Math.max(cam.pos[1], heightAt(cam.pos[0], cam.pos[2]) + 1.5);
-    cam.fov = cam.sniper ? 0.5 : 1.15;
+    cam.fov = cam.fovS;
     cam.dir = look; cam.aim = vadd(t.pos, vscale(look, 1000)); cam.aimDist = 1000;
     return;
   }
+  cam.rig = false;
   if (cam.sniper && t.alive) {
     cam.pos = eyeOf(t);
     cam.fov = [0.42, 0.22, 0.11][cam.zoom];
@@ -2329,13 +2374,12 @@ function updateCamera() {
 }
 function step(dt) {
   battleTime += dt; now += dt;
-  updateCamera();
   const p = player;
   if (p.alive && p.type.air) {
     if (keys.has("KeyW") || keys.has("ArrowUp")) p.throttle = Math.min(1, p.throttle + dt * 0.7);
     if (keys.has("KeyS") || keys.has("ArrowDown")) p.throttle = Math.max(0, p.throttle - dt * 0.7);
     const man = (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
-    const D = boundaryDir(p) || freeDir || cam.dir;
+    const D = boundaryDir(p) || freeDir || camLook();
     flyPlane(p, D, dt, man);
     planeGuns(p, dt, mouseDown);
   } else if (p.alive) {
@@ -2347,7 +2391,7 @@ function step(dt) {
   } else {
     respawnT -= dt;
     if (respawnT <= 0) {
-      p.type = selectedType; spawnTank(p); cam.sniper = false; freeDir = null; centerMsg("RESPAWNED", "#7cc0ff");
+      p.type = selectedType; spawnTank(p); p.prev = null; cam.sniper = false; cam.rig = false; freeDir = null; centerMsg("RESPAWNED", "#7cc0ff");
       if (p.type.air) { cam.yaw = p.team === 0 ? 0 : Math.PI; cam.pitch = 0; } else cam.pitch = clamp(cam.pitch, -0.7, 0.55);
     }
   }
@@ -2717,14 +2761,57 @@ generateWorld();
 newBattle();
 showMenu("start");
 // menu fly-over camera starts at the allied base
+// The battle runs at a fixed SIM_DT; rendering interpolates between the last two simulation states.
+// A variable step tied to requestAnimationFrame made motion (and the flight assist) depend on frame
+// timing, so every uneven or dropped frame showed up as a stutter.
 let last = performance.now();
+function snapshotTransforms() {
+  for (const t of tanks) t.prev = { pos: t.pos.slice(), X: t.X && t.X.slice(), Y: t.Y && t.Y.slice(), Z: t.Z && t.Z.slice(), M: t.M, TM: t.TM, GM: t.GM };
+}
+function simulate(dt) {
+  simAcc = Math.min(simAcc + dt, SIM_DT * MAX_STEPS);
+  while (simAcc >= SIM_DT && state === "playing") {
+    simAcc -= SIM_DT;
+    snapshotTransforms();
+    const wasAlive = player.alive;
+    step(SIM_DT);
+    if (wasAlive && !player.alive) respawnT = 6;
+  }
+  return clamp(simAcc / SIM_DT, 0, 1);
+}
+const mlerp = (a, b, k) => { const o = new Float32Array(16); for (let i = 0; i < 16; i++) o[i] = a[i] + (b[i] - a[i]) * k; return o; };
+// temporarily swap interpolated transforms in for camera, rendering and HUD; restoreSim() puts the simulation state back
+let lerped = [];
+function applyInterp(a) {
+  lerped = [];
+  for (const t of tanks) {
+    const q = t.prev;
+    if (!q || !q.M || !t.M || vlen(vsub(t.pos, q.pos)) > 50) continue; // skip teleports (respawns)
+    lerped.push([t, t.pos, t.X, t.Y, t.Z, t.M, t.TM, t.GM]);
+    t.pos = vlerp(q.pos, t.pos, a);
+    if (t.type.air) {
+      const Z = vnorm(vlerp(q.Z, t.Z, a)), X = vnorm(vcross(vlerp(q.Y, t.Y, a), Z)), Y = vcross(Z, X);
+      t.X = X; t.Y = Y; t.Z = Z; t.M = t.TM = t.GM = basisMat(X, Y, Z, t.pos);
+    } else { t.M = mlerp(q.M, t.M, a); t.TM = mlerp(q.TM, t.TM, a); t.GM = mlerp(q.GM, t.GM, a); }
+  }
+  for (const s of shells) if (s.pp) { s.sp = s.p; s.p = vlerp(s.pp, s.p, a); }
+}
+function restoreSim() {
+  for (const [t, pos, X, Y, Z, M, TM, GM] of lerped) { t.pos = pos; t.X = X; t.Y = Y; t.Z = Z; t.M = M; t.TM = TM; t.GM = GM; }
+  lerped = [];
+  for (const s of shells) if (s.sp) { s.p = s.sp; s.sp = null; }
+}
+// advance one rendered frame of the battle (also used by the console/test hook)
+function advance(dt) {
+  const a = simulate(dt);
+  applyInterp(a);
+  updateCamera(dt);
+  return { planePos: player.pos.slice(), camPos: cam.pos.slice(), camDir: cam.dir.slice() };
+}
 function frame(t) {
   const dt = Math.min(0.05, (t - last) / 1000); last = t;
-  if (state === "playing") {
-    const wasAlive = player.alive;
-    step(dt);
-    if (wasAlive && !player.alive) respawnT = 6;
-  } else if (state === "menu") {
+  if (state === "playing") advance(dt);
+  else if (state === "menu") {
     now += dt;
     showroom(dt);
     for (const tk of tanks) updateTankMatrices(tk);
@@ -2732,12 +2819,14 @@ function frame(t) {
   render();
   drawHud();
   drawMinimap();
+  restoreSim();
   updateDom(dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 // small hook for automated testing / tinkering from the console
-window.steelFront = { get player() { return player; }, get tanks() { return tanks; }, cam, step, fire: () => fire(player), get state() { return state; },
+window.steelFront = { get player() { return player; }, get tanks() { return tanks; }, get shells() { return shells; }, cam, step,
+  advance: dt => { const r = advance(dt); restoreSim(); return r; }, SIM_DT, fire: () => fire(player), get state() { return state; },
   select: k => { selectedType = TYPES[k]; menuTab = selectedType.air ? "air" : "ground"; buildCards(); }, TYPES, dropBomb: () => dropBomb(player), fireRockets: () => fireRockets(player) };
 </script>
 </body>
